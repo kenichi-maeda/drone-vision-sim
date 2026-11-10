@@ -80,8 +80,7 @@ these options before setting `enabled=true`:
 | `object_approach_reacquire_seconds` | `2.0` | One bounded yaw scan after a brief target dropout; translation is held. If not reacquired, land. |
 | `object_approach_timeout_seconds` | `18` | Maximum approach time, not a desired flight duration. |
 
-The active flight node is `safe_hover.py`; `safe_hover_legacy.py` is not the
-launcher target. YOLO reports a bounding box for COCO class 11 (stop sign) on
+The flight node is `safe_hover.py`. YOLO reports a bounding box for COCO class 11 (stop sign) on
 `/drone_vision/yolo_detection`. It is 2D image perception. The approach uses
 relative box area as an approximate standoff cue, not a range sensor. Since the
 camera points downward, vertical image error is not currently controlled.
