@@ -18,6 +18,45 @@ PX4 sensors are healthy, and camera-only YOLO is processing fresh frames. The
 target may be absent at spawn; the bounded yaw search is responsible for
 acquiring it.
 
+## How it flies
+
+The drone is controlled with position setpoints, not velocity. `safe_hover.py`
+moves a target pose and PX4 flies to it.
+
+What it sends to PX4 (through MAVROS):
+
+- `/mavros/setpoint_position/local`: a `PoseStamped` (x, y, z and a yaw
+  quaternion) published at 20 Hz. Every motion is a change to this one pose.
+- `/mavros/set_mode`: switches between `AUTO.TAKEOFF`, `OFFBOARD` and
+  `AUTO.LAND`.
+- `/mavros/cmd/arming`: arms the drone.
+
+Its inputs are the vehicle's own estimate from `/mavros/local_position/pose`,
+the flight state, and the YOLO detection. It never reads simulator map poses.
+
+The phases:
+
+1. **Takeoff:** sets `AUTO.TAKEOFF` and arms. PX4 climbs to the handoff height
+   (about 0.4 m).
+2. **Handoff:** streams setpoints at the current pose, then requests
+   `OFFBOARD`.
+3. **Search:** holds x, y and z and only yaws, through a little over one full
+   turn, until YOLO confirms the target in several consecutive frames.
+4. **Centering:** small yaw corrections proportional to the target's horizontal
+   image error, rate-limited, with a short time limit.
+5. **Approach:** moves the target position forward along the current heading.
+   It slows as the target box grows and as the target drifts off-center, and it
+   keeps correcting yaw while it goes.
+6. **Landing:** sets `AUTO.LAND` and waits for ground contact and disarm.
+
+Stop rules: it lands when the target box area reaches its goal growth (2x by
+default) and the target is centered, after the approach time limit, or on a PX4
+estimator or pose fault. If the target is lost mid-approach, it freezes
+position, scans briefly once, then resumes or lands.
+
+Exact rates, gains, and limits are in the parameter table in
+[`docs/operations_notes.md`](docs/operations_notes.md#what-the-mission-parameters-mean).
+
 ## Start it yourself
 
 Use one terminal for each long-running command. If Birdie is already running,
