@@ -19,7 +19,6 @@ setup(
     entry_points={
         "console_scripts": [
             "camera_probe = drone_vision.camera_probe:main",
-            "tag_detector = drone_vision.tag_detector:main",
             "yolo_detector = drone_vision.yolo_detector:main",
             "safe_hover = drone_vision.safe_hover:main",
         ],
