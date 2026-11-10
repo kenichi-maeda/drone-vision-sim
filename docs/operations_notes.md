@@ -85,9 +85,6 @@ launcher target. YOLO reports a bounding box for COCO class 11 (stop sign) on
 `/drone_vision/yolo_detection`. It is 2D image perception. The approach uses
 relative box area as an approximate standoff cue, not a range sensor. Since the
 camera points downward, vertical image error is not currently controlled.
-The current map pose and 2.0x closer-approach experiment are documented in
-[`approach_test_2026-11-03.md`](approach_test_2026-11-03.md), including the
-original sign pose and restore instructions.
 
 Perception reads only `/birdie/camera_node/image/compressed`. Neither the
 detector nor the controller reads Matrix entity poses, map coordinates, or
@@ -102,8 +99,7 @@ landed via the target-loss safeguard before reaching the 3x cue. That is useful
 end-to-end progress, but the final distance is not yet reliable. The controller
 now makes one in-place yaw reacquisition attempt after the configured 2-second
 loss grace period; it resumes only after stable detections, otherwise it lands.
-It never continues forward without vision. See the full
-run record in [`../debug/yolo_approach_validation_20261031.md`](../debug/yolo_approach_validation_20261031.md).
+It never continues forward without vision.
 
 ## Logs, images, and storage
 

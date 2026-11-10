@@ -129,9 +129,7 @@ run.
 
 The current test map places the duckie target at `(0.5, 0.9, 0)` and uses a 2x
 visual-size growth goal. Its original pose, `(-0.35, 0.85, 0)`, is saved in
-`maps/tag_sandbox/frames_baseline_2026-11-10_duckie_-0.35_0.85.yaml`. Earlier
-test-map poses and restore steps are recorded in
-[`docs/approach_test_2026-11-03.md`](docs/approach_test_2026-11-03.md).
+`maps/tag_sandbox/frames_baseline_2026-11-10_duckie_-0.35_0.85.yaml`.
 
 If Python/package/launcher/model source changed, land the vehicle and stop the
 old workbench first. Rebuild, then start it again using step 3:
@@ -142,5 +140,4 @@ dts devel build --recipe /home/ubuntu/drone-vision-sim/recipe --force --username
 ```
 
 For Matrix reset/recovery, logs, parameters, and known limitations, see
-[`docs/operations_notes.md`](docs/operations_notes.md). The detailed flight
-evidence is in [`debug/yolo_approach_validation_20261031.md`](debug/yolo_approach_validation_20261031.md).
+[`docs/operations_notes.md`](docs/operations_notes.md).
