@@ -1,0 +1,48 @@
+version: 1.0
+frames:
+  # Fields supported on each frame: relative_to, unit, pose, twist
+  map_0:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0
+      roll: 0
+      pitch: 0
+      yaw: 0
+  map_0/vehicle_0:
+    relative_to: ~
+    pose:
+      x: 0
+      y: 0
+      z: 0
+      roll: 0
+      pitch: 0
+      # Preserve the original vehicle heading; navigation must search visually.
+      yaw: 1.57079632679
+  # Stop sign removed 2026-11-10. To restore: map_0/sign_stop_north at x=0.75, y=0.75, z=0,
+  # yaw=1.0472 plus the traffic_signs.yaml entry (see traffic_signs_baseline_2026-11-10_with_stop_sign.yaml
+  # and frames_baseline_2026-11-10_duckie_-0.35_0.85.yaml).
+  # Keep the Duckie visual test prop; the COCO bird model did not recognize it.
+  # Test move (2026-11-10): original duckie pose was x=-0.35, y=0.85, z=0, yaw=1.5708
+  # (saved in frames_baseline_2026-11-10_duckie_-0.35_0.85.yaml).
+  map_0/duckie_target:
+    relative_to: ~
+    pose:
+      x: 0.5
+      y: 0.9
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 1.57079632679
+  # Keep the landing marker off the front-camera test line; use it later for
+  # the separate downward-camera landing experiment.
+  map_0/groundtag_301:
+    relative_to: ~
+    pose:
+      x: 1.5
+      y: 0.0
+      z: 0.001
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0

@@ -1,0 +1,3 @@
+matrix:
+  map: "/home/ubuntu/drone-vision-sim/maps/tag_sandbox"
+  vehicle: "map_0/vehicle_0"

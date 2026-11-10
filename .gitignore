@@ -1,0 +1,9 @@
+# Flight/debug captures and run notes
+debug/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Model weights (large; place yolov8n.onnx in assets/ after cloning)
+*.onnx

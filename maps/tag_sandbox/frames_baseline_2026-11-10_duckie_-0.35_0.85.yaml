@@ -1,0 +1,56 @@
+version: 1.0
+frames:
+  # Fields supported on each frame: relative_to, unit, pose, twist
+  map_0:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0
+      roll: 0
+      pitch: 0
+      yaw: 0
+  map_0/vehicle_0:
+    relative_to: ~
+    pose:
+      x: 0
+      y: 0
+      z: 0
+      roll: 0
+      pitch: 0
+      # Preserve the original vehicle heading; navigation must search visually.
+      yaw: 1.57079632679
+  # Camera-only search target. No simulator pose is read by the detector or
+  # flight controller; this map pose only defines the rendered scene.
+  map_0/sign_stop_north:
+    relative_to: ~
+    pose:
+      # Restore the original test distance (about 1.06 m from spawn).
+      x: 0.75
+      y: 0.75
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      # Preserve the visually approved sign-facing direction.
+      yaw: 1.04719755120
+  # Keep the Duckie visual test prop; the COCO bird model did not recognize it.
+  map_0/duckie_target:
+    relative_to: ~
+    pose:
+      x: -0.35
+      y: 0.85
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 1.57079632679
+  # Keep the landing marker off the front-camera test line; use it later for
+  # the separate downward-camera landing experiment.
+  map_0/groundtag_301:
+    relative_to: ~
+    pose:
+      x: 1.5
+      y: 0.0
+      z: 0.001
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0

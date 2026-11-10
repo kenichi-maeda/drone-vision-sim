@@ -1,0 +1,11 @@
+--- dd24_robot_entity.py
++++ dd24_robot_entity.py
+@@ -181,5 +181,8 @@
+         if self._mavlink_mode == "dtps":
+             self._initialize_mavlink_topics()
+             self._dtps_connector = self.world.proxied.robot_connector
++            if self._physics_gate is not None and not self._physics_gate.is_set():
++                logger.info("[DD24] Bridge routes ready; starting physics loop.")
++                self._physics_gate.set()
+ 
+             self._tx_count: int = 0

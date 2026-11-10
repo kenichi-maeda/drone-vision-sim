@@ -1,0 +1,8 @@
+version: 1.0
+scripts: {}
+# Scripts can be a list or a mapping.
+# Example:
+# scripts:
+#   map_0/vehicle_0:
+#     scripts:
+#       - <script id from scripts/>

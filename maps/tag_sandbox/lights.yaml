@@ -1,0 +1,12 @@
+version: 1.0
+lights: {}
+# Supported types: point, spot, directional, area
+# Example:
+# lights:
+#   map_0/vehicle_0/light_0:
+#     name: front_left
+#     type: spot
+#     intensity: 1.0
+#     range: 2.0
+#     angle: 0.0
+#     color: "#fff"

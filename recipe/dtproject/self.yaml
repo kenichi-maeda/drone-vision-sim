@@ -1,0 +1,7 @@
+name: drone-vision-sim-recipe
+maintainer:
+  name: Drone Vision Project
+  email: user@example.invalid
+description: Local recipe for the Duckiedrone camera-probe project.
+version: 0.0.1
+icon: cube

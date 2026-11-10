@@ -1,0 +1,5 @@
+version: 1.0
+physical_robots: {}
+# Example:
+# physical_robots:
+#   map_0/vehicle_0: vautobot00

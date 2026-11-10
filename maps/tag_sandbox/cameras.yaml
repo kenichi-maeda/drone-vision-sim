@@ -1,0 +1,46 @@
+version: 1.0
+cameras:
+  map_0/vehicle_0/camera_0:
+    name: front_center
+    camera_matrix:
+      - - 311.2
+        - 0.0
+        - 240.0
+      - - 0.0
+        - 311.07
+        - 320.0
+      - - 0.0
+        - 0.0
+        - 1.0
+    # equidistant (fisheye) model, from the pdrone24 calibration with the
+    # principal point centred, as the camera sits on the drone centreline
+    distortion_parameters:
+      - -0.0285
+      - 0.0145
+      - -0.0169
+      - 0.0031
+    width: 480
+    height: 640
+    frame_rate: 30
+
+  map_0/vehicle_0/cameraman_0/camera_0:
+    name: camera_0
+    camera_matrix:
+    - - 200
+      - 0.0
+      - 960
+    - - 0.0
+      - 200
+      - 540
+    - - 0.0
+      - 0.0
+      - 1.0
+    distortion_parameters:
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    - 0.0
+    width: 1920
+    height: 1080
+    frame_rate: 30

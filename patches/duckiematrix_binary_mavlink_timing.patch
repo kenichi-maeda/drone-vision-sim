@@ -1,0 +1,13 @@
+--- data_connectors.py
++++ data_connectors.py
+@@ -44,4 +44,9 @@
+ def _get_dtps_timing_metadata(raw_data: RawData) -> dict[str, int]:
+-    native_message = raw_data.get_as_native_object()
++    # MAVLink transport topics are intentionally application/octet-stream;
++    # they carry raw packets, not DTPS structures with profiler metadata.
++    try:
++        native_message = raw_data.get_as_native_object()
++    except ValueError:
++        return {}
+     if not isinstance(native_message, dict):
+         return {}

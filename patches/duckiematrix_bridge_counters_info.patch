@@ -1,0 +1,6 @@
+--- dd24_robot_entity.py
++++ dd24_robot_entity.py
+@@ -315,1 +315,2 @@
+-                self._logger.debug(
++                # Keep bridge counters visible for HIL readiness diagnosis.
++                self._logger.info(

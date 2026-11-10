@@ -1,0 +1,7 @@
+--- px4_multirotor.py
++++ px4_multirotor.py
+@@ -186,3 +186,5 @@
+-                latest = self.conn.recv_match(type='HIL_ACTUATOR_CONTROLS', blocking=True, timeout=0.01)
++                latest = self.conn.recv_match(type='HIL_ACTUATOR_CONTROLS', blocking=True, timeout=0.001)
++                if latest is None:
++                    time.sleep(0.001)

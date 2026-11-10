@@ -1,0 +1,11 @@
+--- dd24_robot_entity.py
++++ dd24_robot_entity.py
+@@ -167,5 +167,7 @@
+         # In DTPS mode, gate the physics thread until the bridge is connected
+         # so that PX4 SITL receives HIL_SENSOR starting from t≈0 (no stale time offset).
+-        lockstep_timeout = 0.1 if mavlink_mode == "dtps" else 0.002
++        # Keep DTPS polling below PX4's 25 ms simulator sensor poll timeout.
++        # A 100 ms wait throttles lockstep HIL_SENSOR and causes PX4 timeouts.
++        lockstep_timeout = 0.01 if mavlink_mode == "dtps" else 0.002
+         physics_gate = threading.Event() if mavlink_mode == "dtps" else None
+         super().__init__(

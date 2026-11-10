@@ -1,0 +1,14 @@
+--- data_connectors.py
++++ data_connectors.py
+@@ -244,4 +244,7 @@
+-            data = decoder.from_rawdata(
+-                raw_data,
+-                allow_none=key in self._shm_paths,
+-            )
++            if key in self._shm_paths:
++                try:
++                    if raw_data.get_as_native_object() is None:
++                        return
++                except ValueError:
++                    pass
++            data = decoder.from_rawdata(raw_data)

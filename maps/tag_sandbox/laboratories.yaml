@@ -1,0 +1,4 @@
+version: 1.0
+# Empty test field: omit the lab building to reduce large background
+# detections during the camera search.
+laboratories: {}

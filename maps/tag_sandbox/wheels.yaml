@@ -1,0 +1,12 @@
+version: 1.0
+wheels: {}
+# Example:
+# wheels:
+#   map_0/vehicle_0/wheel_left:
+#     radius: 0.065
+#     encoder:
+#       resolution: 135
+#   map_0/vehicle_0/wheel_right:
+#     radius: 0.065
+#     encoder:
+#       resolution: 135

@@ -1,0 +1,11 @@
+VERSION=0.0.0
+TYPE=template-exercise
+TYPE_VERSION=3
+
+NAME=drone-vision-sim
+
+# Reuse the ROS 2 DD24 learning-environment recipe that is already working on
+# this base station. The project code itself lives in packages/.
+RECIPE_REPOSITORY=duckietown/lx-dd-middleware-ros2-recipe
+RECIPE_BRANCH=ente
+RECIPE_LOCATION=
