@@ -7,3 +7,7 @@ __pycache__/
 
 # Model weights (large; place yolov8n.onnx in assets/ after cloning)
 *.onnx
+
+# Local approach-test and handoff notes
+docs/approach_test_*.md
+docs/handoff_*.md
