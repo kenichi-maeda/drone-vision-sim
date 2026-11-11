@@ -74,16 +74,6 @@ skip step 1. Run only one Matrix engine/window.
    dts matrix run --standalone --map /home/ubuntu/drone-vision-sim/maps/tag_sandbox
    ```
 
-   The project includes a small compatibility patch for the Matrix DTPS MAVLink
-   bridge. After the engine starts, apply it and restart that engine before
-   attaching Birdie:
-
-   ```bash
-   cd /home/ubuntu/drone-vision-sim
-   bash scripts/apply_matrix_bridge_fixes.sh
-   docker restart dts-matrix-engine
-   ```
-
    Keep the native Matrix renderer open while the engine restarts. If it does
    not reconnect, relaunch the native renderer against `192.168.139.2` with
    `dts matrix run --engine 192.168.139.2 --renderer-id 0`.
@@ -180,3 +170,11 @@ dts devel build --recipe /home/ubuntu/drone-vision-sim/recipe --force --username
 
 For Matrix reset/recovery, logs, parameters, and known limitations, see
 [`docs/operations_notes.md`](docs/operations_notes.md).
+
+## Watch the camera live (optional)
+
+Set `CAMERA_VIEWER=true` in `packages/drone_vision/target.env` and restart the
+workbench. Then run `python3 scripts/view_camera.py` on the sim machine and open
+the URL it prints (port 8090) in a browser. The page shows the camera with the
+YOLO box, plus the flight phase, confidence, error, and box area. It is
+read-only.

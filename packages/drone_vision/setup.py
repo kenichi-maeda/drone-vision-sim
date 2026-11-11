@@ -20,6 +20,7 @@ setup(
         "console_scripts": [
             "camera_probe = drone_vision.camera_probe:main",
             "yolo_detector = drone_vision.yolo_detector:main",
+            "camera_view = drone_vision.camera_view:main",
             "safe_hover = drone_vision.safe_hover:main",
         ],
     },
