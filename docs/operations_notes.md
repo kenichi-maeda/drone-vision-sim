@@ -42,13 +42,10 @@ Birdie is not a reliable reset of the scene.
    dts code workbench --recipe /home/ubuntu/drone-vision-sim/recipe -R birdie
    ```
 
-If MAVROS has lost the simulator connection, do not arm. Matrix's DTPS bridge
-needs the three compatibility patches in `patches/` applied to the engine
-container after every fresh engine creation. The helper is idempotent:
+If MAVROS has lost the simulator connection, do not arm. Re-attach the vehicle
+and restart the MAVLink proxy and PX4:
 
 ```bash
-bash scripts/apply_matrix_bridge_fixes.sh
-docker restart dts-matrix-engine
 dts matrix attach birdie map_0/vehicle_0
 docker exec dts-virtual-birdie docker restart mavlink-proxy
 docker exec dts-virtual-birdie docker restart dt-px4
@@ -57,8 +54,8 @@ docker exec dts-virtual-birdie docker restart dt-px4
 Then repeat the README readiness checks. Look for PX4 `Simulator connected` and
 `Ready for takeoff!`, MAVROS `connected: true`, a changing local pose, and fresh
 camera frames. Start the native renderer with
-`dts matrix run --engine 192.168.139.2 --renderer-id 0` if it did not reconnect
-after the engine restart. Browser rendering is not required.
+`dts matrix run --engine 192.168.139.2 --renderer-id 0` if it did not reconnect.
+Browser rendering is not required.
 
 ## What the mission parameters mean
 
@@ -78,7 +75,7 @@ these options before setting `enabled=true`:
 | `object_approach_max_error_x` | `0.45` | Forward speed tapers between the center tolerance (`0.20`) and this image error; above it the drone holds position while turning. |
 | `object_approach_size_growth_ratio` | `2.0` | Desired target box-area growth relative to acquisition; more growth means a closer visual-size stop, not a known metric distance. |
 | `object_approach_reacquire_seconds` | `2.0` | One bounded yaw scan after a brief target dropout; translation is held. If not reacquired, land. |
-| `object_approach_timeout_seconds` | `18` | Maximum approach time, not a desired flight duration. |
+| `object_approach_timeout_seconds` | `30` | Maximum approach time, not a desired flight duration. |
 
 The flight node is `safe_hover.py`. YOLO reports a bounding box for COCO class 11 (stop sign) on
 `/drone_vision/yolo_detection`. It is 2D image perception. The approach uses

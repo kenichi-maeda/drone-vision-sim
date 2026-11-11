@@ -20,6 +20,12 @@ dt-exec ros2 run drone_vision yolo_detector --ros-args \
     -p target_class_id:="${YOLO_TARGET_CLASS_ID:--1}" \
     -p allowed_class_ids:="[${YOLO_ALLOWED_CLASS_IDS:-11,32}]" \
     -p confidence_threshold:="${YOLO_CONFIDENCE_THRESHOLD:-0.35}"
+# Optional live browser view of the annotated YOLO stream (CAMERA_VIEWER=true in
+# target.env). Viewer only; the detector encodes frames only while it is running.
+if [ "${CAMERA_VIEWER:-false}" = "true" ]; then
+    dt-exec ros2 run drone_vision camera_view --ros-args \
+        -p port:="${CAMERA_VIEWER_PORT:-8090}"
+fi
 # Flight stays disabled unless explicitly enabled. The controller's YOLO
 # search, centering, and approach options have short, validated defaults.
 dt-exec ros2 run drone_vision safe_hover --ros-args \

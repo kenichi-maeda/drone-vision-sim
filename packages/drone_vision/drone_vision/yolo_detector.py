@@ -14,21 +14,26 @@ from std_msgs.msg import Float32MultiArray, Header
 
 
 CAMERA_TOPIC = "/birdie/camera_node/image/compressed"
+ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
 MODEL_INPUT_SIZE = 640
 COCO_STOP_SIGN_CLASS = 11
-COCO_CLASS_NAMES = {
-    0: "person",
-    1: "bicycle",
-    2: "car",
-    3: "motorcycle",
-    5: "bus",
-    7: "truck",
-    11: "stop_sign",
-    14: "bird",
-    15: "cat",
-    16: "dog",
-    56: "chair",
-}
+COCO_CLASS_NAMES = dict(
+    enumerate(
+        (
+            "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train", "truck",
+            "boat", "traffic_light", "fire_hydrant", "stop_sign", "parking_meter", "bench",
+            "bird", "cat", "dog", "horse", "sheep", "cow", "elephant", "bear", "zebra",
+            "giraffe", "backpack", "umbrella", "handbag", "tie", "suitcase", "frisbee", "skis",
+            "snowboard", "sports_ball", "kite", "baseball_bat", "baseball_glove", "skateboard",
+            "surfboard", "tennis_racket", "bottle", "wine_glass", "cup", "fork", "knife",
+            "spoon", "bowl", "banana", "apple", "sandwich", "orange", "broccoli", "carrot",
+            "hot_dog", "pizza", "donut", "cake", "chair", "couch", "potted_plant", "bed",
+            "dining_table", "toilet", "tv", "laptop", "mouse", "remote", "keyboard",
+            "cell_phone", "microwave", "oven", "toaster", "sink", "refrigerator", "book",
+            "clock", "vase", "scissors", "teddy_bear", "hair_drier", "toothbrush",
+        )
+    )
+)
 
 
 class YoloDetector(Node):
@@ -86,6 +91,11 @@ class YoloDetector(Node):
             Float32MultiArray, "/drone_vision/yolo_detection", 10
         )
         self._frame_pub = self.create_publisher(Header, "/drone_vision/yolo_frame", 10)
+        # Camera frame with the reported detection drawn on it, for live viewing.
+        # Only encoded while something is subscribed, so it costs nothing otherwise.
+        self._annotated_pub = self.create_publisher(
+            CompressedImage, ANNOTATED_TOPIC, QoSProfile(depth=1)
+        )
         self.get_logger().info(
             f"YOLOv8n COCO detector loaded from {model_path}; target_class_id="
             f"{self._target_class_id} ({self._target_description}); confidence_threshold="
@@ -171,6 +181,39 @@ class YoloDetector(Node):
         detected_class = int(class_ids[prediction_index])
         return (scores[best_index], [float(x_min), float(y_min), float(x_max), float(y_max)], detected_class)
 
+    def _publish_annotated(
+        self,
+        header: Header,
+        image: np.ndarray,
+        detection: tuple[float, list[float], int] | None,
+    ) -> None:
+        """Publish the frame with the reported box drawn on it (viewer only)."""
+        if self._annotated_pub.get_subscription_count() == 0:
+            return
+        height, width = image.shape[:2]
+        # Image center: the controller steers to put the target here.
+        cx, cy = width // 2, height // 2
+        cv2.line(image, (cx - 10, cy), (cx + 10, cy), (200, 200, 200), 1)
+        cv2.line(image, (cx, cy - 10), (cx, cy + 10), (200, 200, 200), 1)
+        if detection is not None:
+            confidence, (x_min, y_min, x_max, y_max), class_id = detection
+            label = (
+                f"{COCO_CLASS_NAMES.get(class_id, f'coco_class_{class_id}')} {confidence:.2f}"
+            )
+            top_left = (int(x_min), int(y_min))
+            cv2.rectangle(image, top_left, (int(x_max), int(y_max)), (0, 255, 0), 2)
+            label_at = (top_left[0], max(top_left[1] - 6, 14))
+            cv2.putText(image, label, label_at, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3)
+            cv2.putText(image, label, label_at, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+        ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if not ok:
+            return
+        annotated = CompressedImage()
+        annotated.header = header
+        annotated.format = "jpeg"
+        annotated.data = encoded.tobytes()
+        self._annotated_pub.publish(annotated)
+
     def _on_image(self, message: CompressedImage) -> None:
         self._frame_count += 1
         if self._frame_count % self._inference_every_n_frames:
@@ -196,6 +239,7 @@ class YoloDetector(Node):
         if oversized_detection:
             detection = None
         inference_ms = (monotonic() - started_at) * 1000.0
+        self._publish_annotated(message.header, image, detection)
         if detection is None:
             now = monotonic()
             if now - self._last_miss_log_at >= 3.0:

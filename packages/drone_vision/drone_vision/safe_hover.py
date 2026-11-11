@@ -92,7 +92,7 @@ class SafeHover(Node):
             "object_approach_loss_timeout_seconds": 2.0,
             "object_approach_reacquire_seconds": 2.0,
             "object_approach_reacquire_max_error_x": 0.80,
-            "object_approach_timeout_seconds": 18.0,
+            "object_approach_timeout_seconds": 30.0,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
