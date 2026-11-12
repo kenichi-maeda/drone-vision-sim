@@ -29,8 +29,8 @@ frames:
   map_0/duckie_target:
     relative_to: ~
     pose:
-      x: 0.5
-      y: 0.9
+      x: -0.7
+      y: -0.7
       z: 0.0
       roll: 0.0
       pitch: 0.0
