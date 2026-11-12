@@ -86,7 +86,7 @@ class SafeHover(Node):
             "object_centering_loss_timeout_seconds": 1.5,
             "object_approach_enabled": True,
             "object_approach_speed_m_s": 0.08,
-            "object_approach_size_growth_ratio": 2.0,
+            "object_approach_size_growth_ratio": 2.5,
             "object_approach_center_tolerance": 0.20,
             "object_approach_max_error_x": 0.45,
             "object_approach_loss_timeout_seconds": 2.0,

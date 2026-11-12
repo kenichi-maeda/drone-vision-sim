@@ -49,7 +49,7 @@ The phases:
    keeps correcting yaw while it goes.
 6. **Landing:** sets `AUTO.LAND` and waits for ground contact and disarm.
 
-Stop rules: it lands when the target box area reaches its goal growth (2x by
+Stop rules: it lands when the target box area reaches its goal growth (2.5x by
 default) and the target is centered, after the approach time limit, or on a PX4
 estimator or pose fault. If the target is lost mid-approach, it freezes
 position, scans briefly once, then resumes or lands.
@@ -156,7 +156,7 @@ if it cannot reacquire. Verify after the run that MAVROS reports `armed: false` 
 `landed_state: 1`. The node is one-shot; restart the workbench before another
 run.
 
-The current test map places the duckie target at `(0.5, 0.9, 0)` and uses a 2x
+The current test map places the duckie target at `(0.5, 0.9, 0)` and uses a 2.5x
 visual-size growth goal. Its original pose, `(-0.35, 0.85, 0)`, is saved in
 `maps/tag_sandbox/frames_baseline_2026-11-10_duckie_-0.35_0.85.yaml`.
 

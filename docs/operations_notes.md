@@ -73,7 +73,7 @@ these options before setting `enabled=true`:
 | `object_approach_enabled` | `true` | Move forward while maintaining horizontal centering. |
 | `object_approach_speed_m_s` | `0.08` | Maximum forward speed; controller slows as apparent size grows. |
 | `object_approach_max_error_x` | `0.45` | Forward speed tapers between the center tolerance (`0.20`) and this image error; above it the drone holds position while turning. |
-| `object_approach_size_growth_ratio` | `2.0` | Desired target box-area growth relative to acquisition; more growth means a closer visual-size stop, not a known metric distance. |
+| `object_approach_size_growth_ratio` | `2.5` | Desired target box-area growth relative to acquisition; more growth means a closer visual-size stop, not a known metric distance. |
 | `object_approach_reacquire_seconds` | `2.0` | One bounded yaw scan after a brief target dropout; translation is held. If not reacquired, land. |
 | `object_approach_timeout_seconds` | `30` | Maximum approach time, not a desired flight duration. |
 
