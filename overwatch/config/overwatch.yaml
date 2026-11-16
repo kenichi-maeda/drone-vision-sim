@@ -67,7 +67,7 @@ nl:
   clarify_timeout_s: 15
   llm_fallback:
     enabled: false         # optional Claude fallback; needs ANTHROPIC_API_KEY
-    model: claude-haiku-5-5
+    model: claude-opus-5-5
     timeout_s: 4
 
 flight:

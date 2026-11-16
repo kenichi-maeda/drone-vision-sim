@@ -1,2 +1,2 @@
 # Optional: the off-by-default Claude fallback for natural-language targeting.
-anthropic
+anthropic==2.8.0
