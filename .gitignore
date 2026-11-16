@@ -11,3 +11,8 @@ __pycache__/
 # Local approach-test and handoff notes
 docs/approach_test_*.md
 docs/handoff_*.md
+
+# the .venv file
+.venv/
+overwatch/.venv/
+

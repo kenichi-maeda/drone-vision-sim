@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OVERWATCH</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand">OVERWATCH</div>
+  <div class="chips">
+    <span class="chip" id="chip-source" title="Camera source">SOURCE —</span>
+    <span class="chip" id="chip-link" title="Connection to the drone-side link">LINK —</span>
+    <span class="chip" id="chip-px4" title="Flight controller connection">PX4 —</span>
+    <span class="chip mode" id="chip-mode" title="Control mode (M)">AUTONOMOUS</span>
+    <span class="chip" id="chip-arm">DISARMED</span>
+    <span class="chip num" id="chip-fps" title="Camera frames per second / frames shown after inference">FPS — / —</span>
+    <span class="chip num" id="chip-infer" title="Inference time per frame">INFER — ms</span>
+    <span class="chip rec" id="chip-rec" hidden>REC</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="video" aria-label="Camera with detections">
+    <div class="stage" id="stage">
+      <canvas id="canvas" width="480" height="640" tabindex="0" aria-label="Click a box to lock it"></canvas>
+      <div class="banners" id="banners"></div>
+      <div class="hud-bottom">
+        <div class="hud-cmd num" id="hud-cmd">CMD fwd 0.00 left 0.00 up 0.00 yaw 0.00</div>
+        <div class="hud-block" id="hud-block"></div>
+      </div>
+      <div class="empty" id="empty">Waiting for camera frames…</div>
+    </div>
+    <p class="hint">Click a box, or Tab / Shift+Tab then Enter, to lock. Backspace releases. Press / to type a command.</p>
+  </section>
+
+  <aside class="side">
+    <section class="panel target" aria-labelledby="h-target">
+      <div class="panel-head">
+        <h2 id="h-target">Target</h2>
+        <span class="pill" id="target-status">NONE</span>
+      </div>
+      <dl class="kv num" id="target-kv">
+        <dt>Track</dt><dd id="t-id">—</dd>
+        <dt>Object</dt><dd id="t-what">—</dd>
+        <dt>Confidence</dt><dd id="t-conf">—</dd>
+        <dt>Image center</dt><dd id="t-center">—</dd>
+        <dt>Error from center</dt><dd id="t-error">—</dd>
+        <dt>Last seen</dt><dd id="t-seen">—</dd>
+      </dl>
+      <button type="button" id="btn-release" class="btn">Release lock <kbd>Backspace</kbd></button>
+    </section>
+
+    <section class="panel" aria-labelledby="h-dets">
+      <div class="panel-head"><h2 id="h-dets">Detections</h2><span class="count num" id="det-count">0</span></div>
+      <ul class="dets" id="dets"></ul>
+    </section>
+
+    <section class="panel" aria-labelledby="h-cmd">
+      <div class="panel-head"><h2 id="h-cmd">Command</h2></div>
+      <form id="cmd-form" autocomplete="off">
+        <input id="cmd" type="text" placeholder="lock onto the red robot  ( / to focus )" aria-label="Targeting command">
+      </form>
+      <div class="options" id="options"></div>
+      <ol class="log" id="log"></ol>
+    </section>
+
+    <section class="panel flight" aria-labelledby="h-flight">
+      <div class="panel-head">
+        <h2 id="h-flight">Flight</h2>
+        <button type="button" id="btn-mode" class="btn mode-btn">Manual override <kbd>M</kbd></button>
+      </div>
+      <dl class="kv num">
+        <dt>PX4 mode</dt><dd id="v-mode">—</dd>
+        <dt>Link phase</dt><dd id="v-phase">—</dd>
+        <dt>Altitude</dt><dd id="v-alt">—</dd>
+      </dl>
+      <div class="actions">
+        <button type="button" class="btn" data-action="arm">Arm <kbd>Y</kbd></button>
+        <button type="button" class="btn" data-action="disarm">Disarm <kbd>H</kbd></button>
+        <button type="button" class="btn" data-action="takeoff">Takeoff <kbd>T</kbd></button>
+        <button type="button" class="btn" data-action="land">Land <kbd>L</kbd></button>
+      </div>
+      <div class="keys" aria-label="Manual keys">
+        <span data-k="yaw_left">Q<small>yaw L</small></span><span data-k="forward">W<small>fwd</small></span><span data-k="yaw_right">E<small>yaw R</small></span><span data-k="up">R<small>up</small></span>
+        <span data-k="left">A<small>left</small></span><span data-k="back">S<small>back</small></span><span data-k="right">D<small>right</small></span><span data-k="down">F<small>down</small></span>
+      </div>
+      <div class="emergency">
+        <button type="button" class="btn landnow" data-action="land_now">LAND NOW <kbd>Space</kbd></button>
+        <button type="button" class="btn kill" data-action="kill" id="btn-kill">KILL <kbd>Shift+Esc</kbd></button>
+      </div>
+      <p class="kill-note" id="kill-note">KILL stops the motors. The drone falls.</p>
+    </section>
+  </aside>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

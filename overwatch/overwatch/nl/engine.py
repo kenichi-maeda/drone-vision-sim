@@ -55,7 +55,7 @@ class CommandEngine:
                 via = "llm"
             except Exception as error:  # the fallback must never break the console
                 query = None
-                fallback_error = f" (LLM fallback unavailable: {type(error).__name__})"
+                fallback_error = f" (LLM fallback unavailable: {error})"
             else:
                 fallback_error = "" if query is not None else " (LLM fallback could not interpret it either)"
         else:
