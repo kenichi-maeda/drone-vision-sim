@@ -90,12 +90,17 @@ def resolve(query: TargetQuery, detections: list[Detection], width: int, height:
             locked = next((d for d in detections if d.track_id == current), None)
             if locked is not None:
                 pool = [d for d in detections if d.class_name == locked.class_name and d.color == locked.color]
-        pool = [d for d in _filter(query, pool) if d.track_id != current]
+        group = _filter(query, pool)
+        # Remember the whole group (current lock included) so "the other one" toggles.
+        matched = [d.track_id for d in group]
+        pool = [d for d in group if d.track_id != current]
         if not pool:
             return Outcome("none", f"There is no other {label} in view. {summarize(detections)}")
         if len(pool) == 1:
-            return Outcome("lock", track_id=pool[0].track_id, matched=[d.track_id for d in pool])
-        return clarify(pool, f"other {label}", width, height)
+            return Outcome("lock", track_id=pool[0].track_id, matched=matched)
+        outcome = clarify(pool, f"other {label}", width, height)
+        outcome.matched = matched
+        return outcome
 
     matches = _filter(query, detections)
     if not matches:

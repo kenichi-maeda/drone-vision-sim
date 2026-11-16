@@ -1,0 +1,5 @@
+.venv/
+weights/
+logs/
+recordings/
+*.pt

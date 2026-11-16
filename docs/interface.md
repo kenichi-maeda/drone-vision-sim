@@ -1,10 +1,10 @@
 # OVERWATCH operator console
 
-> **Status (2026-11-16):** the design is approved, but **no console code exists yet**.
-> The recon findings below were verified on 2026-11-15. Everything under
-> [Using the console](#using-the-console-planned) describes planned behavior, and
-> those commands will not work until the build reaches that step. This page
-> will become the real manual as each piece lands.
+> **Status (2026-11-16):** the console is built on branch `overwatch` and has
+> been tested against a stand-in drone (`overwatch/tools/fake_link.py`), but
+> **not yet in the simulator**. The sim drone is `birdie`. The recon findings
+> below were verified on 2026-11-15. This page will be updated as each
+> capability is verified in the sim.
 
 OVERWATCH is a browser-based operator console for the Duckiedrone. It shows
 the drone's camera with live YOLO detections drawn on it. It lets the operator
@@ -21,7 +21,7 @@ will plug in later through the same two adapters.
 - [What has been done](#what-has-been-done)
 - [Architecture](#architecture)
 - [Recon findings](#recon-findings)
-- [Using the console (planned)](#using-the-console-planned)
+- [Using the console](#using-the-console)
 - [Physical drone integration](#physical-drone-integration)
 - [Open items and risks](#open-items-and-risks)
 
@@ -31,13 +31,12 @@ will plug in later through the same two adapters.
 | --- | --- | --- |
 | 2026-11-15 | Read the Duckietown docs: Duckiedrone, Duckiematrix, ROS, `dts` (Ente), plus the Daffy DD24 manuals | Ente docs cover sim flight (PX4 + MAVROS) but not the drone camera. Physical-drone docs exist only for Daffy (ROS 1). |
 | 2026-11-15 | Read `h2r/pidrone_pkg` source (the Daffy drone software) | Physical camera, control topics and safety heartbeat identified ([below](#physical-drone-daffy-docs-and-source-not-verified-on-hardware)). |
-| 2026-11-15 | Live checks on virtual DD24 `scooby` in the workspace devcontainer | Camera topic, QoS, rate and MAVROS interfaces confirmed. The stock rosbridge was found to be broken. |
+| 2026-11-15 | Live checks on a virtual DD24 in the workspace devcontainer | Camera topic, QoS, rate and MAVROS interfaces confirmed. The stock rosbridge was found to be broken. |
 | 2026-11-15 | Four Matrix scene experiments using a scratch map (`/home/ubuntu/overwatch-recon-map` in the workspace, not in this repo) | Found which objects the drone camera can see ([below](#placing-objects-in-the-matrix)). |
 | 2026-11-15 | Ran stock and open-vocabulary YOLO on captured sim frames, on the Mac's GPU | Chose the detector ([below](#yolo-on-sim-frames)). |
 | 2026-11-16 | Design decisions agreed | Listed in [Decisions](#decisions). |
 
-No files in this repo have changed apart from this page. No branch or commit
-has been made yet; work will happen on the branch `overwatch`.
+Work is on the branch `overwatch`.
 
 ### Decisions
 
@@ -59,9 +58,10 @@ has been made yet; work will happen on the branch `overwatch`.
 5. **Physical drone stack:** not yet decided (Daffy ROS 1 or Ente ROS 2 +
    PX4). Either way, LIVE sits behind the same feed and flight adapters.
 6. **Repo:** work on branch `overwatch` in the Mac copy, and sync drone-side
-   files into the workspace copy with `scripts/sync_to_workspace.sh`
+   files into the workspace copy with `scripts/sync_to_workspace.py`
    (`--dry-run` supported). Nothing is committed unless the lead asks.
-
+7. **Sim drone:** `birdie`, a virtual DD24 in the workspace devcontainer.
+stil
 ## Architecture
 
 ```
@@ -76,7 +76,7 @@ has been made yet; work will happen on the branch `overwatch`.
 
 | Module | Responsibility | SIM | LIVE |
 | --- | --- | --- | --- |
-| Feed source | Delivers camera frames | `overwatch_link` node on the drone, over a websocket | Ente drone: same link. Daffy drone: MJPEG adapter (stub). |
+| Feed source | Delivers camera frames | `overwatch_link` node on `birdie`, over TCP | Ente drone: same link. Daffy drone: MJPEG adapter (stub). |
 | Perception | YOLO-World detection, ByteTrack track IDs, HSV color | Mac | Mac, or a remote host set in config |
 | Target manager | Holds the lock, reports TARGET LOST, provides `get_target_state()` | Mac | Mac |
 | Command parser | Turns typed commands into a validated target query | Mac | Mac |
@@ -94,16 +94,16 @@ frames are dropped, never queued, so delay cannot build up.
 **Why the drone needs its own link node.** The virtual drone ships a rosbridge
 websocket, but it is broken (see below). `overwatch_link` is a small ROS 2
 node that runs in the project workbench on the drone. It sends camera JPEGs
-up and takes flight commands down over a single websocket. A port forwarder
-in the devcontainer makes that websocket reachable from the Mac.
+up and takes flight commands down over one TCP connection. A port forwarder
+in the devcontainer makes it reachable from the Mac.
 
 ## Recon findings
 
-### Simulated drone (verified live on `scooby`)
+### Simulated drone (verified live on a virtual DD24)
 
 | Item | Finding |
 | --- | --- |
-| Camera topic | `/<robot>/camera_node/image/compressed`, for example `/scooby/camera_node/image/compressed` |
+| Camera topic | `/<robot>/camera_node/image/compressed`, so `/birdie/camera_node/image/compressed` for `birdie` |
 | Message | `sensor_msgs/msg/CompressedImage`, JPEG, `frame_id: camera_color_optical_frame` |
 | QoS | RELIABLE, KEEP_LAST (1), VOLATILE (matches the existing `yolo_detector.py`) |
 | Image | 480 × 640 portrait, fisheye (equidistant model in `cameras.yaml`), pitched down toward the ground |
@@ -170,21 +170,38 @@ of the repo, so the existing `yolo_detector` cannot run as checked out.
 The Ente manual says the drone software is being ported to Ente. An Ente
 drone would likely match the sim interfaces (ROS 2 + PX4 + MAVROS).
 
-## Using the console (planned)
+## Using the console
 
 ### Start a sim session
 
-These steps run in the workspace devcontainer, except the last.
+The sim drone is `birdie`, a virtual DD24 in the workspace devcontainer.
+Run steps 1–5 in a devcontainer terminal, and step 6 on the Mac. Don't use the
+Mac's own `dts` for virtual robots: they don't work on this Mac.
 
-1. Start the virtual drone: `dts duckiebot virtual start scooby`
-2. Start the Matrix with the arena map and the patched engine image:
-   `dts matrix run --standalone --map /home/ubuntu/drone-vision-sim/maps/overwatch_arena --container-image <patched tag>`
-3. Attach the drone to the spawn: `dts matrix attach scooby map_0/vehicle_0`
-4. Start the drone-side link:
-   `dts code workbench --recipe /home/ubuntu/drone-vision-sim/recipe -R scooby -L overwatch`
-5. Forward the link port to the Mac: `python3 scripts/forward_port.py --robot scooby`
-6. On the Mac, start the console from `overwatch/` with its own venv:
-   `python -m overwatch`. Then open the URL it prints.
+0. One time only:
+   - If `dts duckiebot virtual list` does not show `birdie`, create it:
+     `dts duckiebot virtual create -t duckiedrone -c DD24 birdie`
+   - Build the patched Matrix engine and make it the image `dts` runs:
+     `bash scripts/build_patched_engine_image.sh --as-default`
+   - On the Mac, create the console's venv:
+     `cd overwatch && /opt/homebrew/bin/python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt`
+1. Start the virtual drone: `dts duckiebot virtual start birdie`
+2. Start the Matrix with the arena map. `--no-pull` keeps `dts` from
+   replacing the patched engine with a newer stock image:
+   `dts matrix run --standalone --no-pull --map /home/ubuntu/drone-vision-sim/maps/overwatch_arena`
+3. Attach the drone to the spawn: `dts matrix attach birdie map_0/vehicle_0`
+4. Build the project image on `birdie` and start the drone-side link:
+   `bash /home/ubuntu/drone-vision-sim/scripts/workbench.sh birdie overwatch`.
+   This wraps `dts code workbench`, which on its own fails here with "No valid
+   DTProject found" (the script explains why).
+5. Forward the link port to the Mac: `python3 scripts/forward_port.py --robot birdie`
+6. On the Mac: `cd overwatch && .venv/bin/python -m overwatch`, then open
+   http://127.0.0.1:8700/.
+
+To try the console without the simulator, run
+`.venv/bin/python tools/fake_link.py --frames tools/sample_frames` (from
+`overwatch/`) in place of steps 1–5. It plays the frames in a loop and
+pretends to fly. Stop it before step 5 of a real session: both use port 8765.
 
 ### Screen layout
 
@@ -231,8 +248,9 @@ A few terms have specific meanings:
 
 Once a target is locked, it gets a distinct reticle and keeps its track ID as
 it moves. If it leaves the frame or stops being detected, the panel shows
-**TARGET LOST**. A matching object that reappears shortly afterwards is
-offered for reacquiring.
+**TARGET LOST**. If, within 3 s, exactly one object of the same class and
+color appears, it is locked again automatically. If several match, the one
+nearest the target's last position is highlighted and Enter locks it.
 
 ### Fly
 
@@ -248,8 +266,8 @@ operator. Toggle between them with M or the HUD button.
 | Toggle MANUAL / AUTONOMOUS | M | |
 | Arm / disarm | Y / H | Disarm only works on the ground |
 | Takeoff / land | T / L | |
-| **LAND NOW** | Space, or the HUD button | Works in any mode. Zeroes manual input. Logged. |
-| **KILL** (force-disarm) | **Shift+Esc**, or the red HUD button | Motors stop and the drone falls. Works even while typing. Logged. |
+| **LAND NOW** | Space, or the HUD button | Works in any mode. Zeroes manual input and returns to AUTONOMOUS. Logged. |
+| **KILL** (force-disarm) | **Shift+Esc**, or the red HUD button | Motors stop and the drone falls. Works even while typing. Returns to AUTONOMOUS. Logged. |
 
 Releasing a movement key stops that motion. All keys and speed limits are set
 in `overwatch/config/overwatch.yaml`. KILL and LAND NOW events go to a JSONL
@@ -308,10 +326,14 @@ Which stack the physical drone runs is still to be decided (decision 5).
 ## Open items and risks
 
 - **Physical drone stack** (decision 5) is not yet decided.
-- **Patched Matrix engine:** `build_matrix_engine.sh` retags the official
-  engine image name, which `dts` overwrote on 2026-11-15. The plan is to
-  build under a separate tag and pass `--container-image` instead. The
-  patches may not apply to the newer engine.
+- **Patched Matrix engine:** all six project patches apply to the current
+  engine (some with fuzz). `dts matrix run` refuses `--container-image` with
+  the Mac renderer, so `scripts/build_patched_engine_image.sh --as-default`
+  points the standard tag at the patched image and keeps the stock one as
+  `ente-arm64v8-stock`. Always start the Matrix with `--no-pull`.
+- **`birdie` must live in the workspace devcontainer.** A `dts-virtual-birdie`
+  container on the Mac's own Docker holds the same ports (80, 8080, 9001,
+  11411, 11911) and must be stopped first.
 - **PX4 health in sim:** manual flight and the recall eval both depend on a
   converged position estimate.
 - **Small duckie recall** is likely below 80%, so a fine-tune is likely.

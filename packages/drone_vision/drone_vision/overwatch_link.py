@@ -184,7 +184,7 @@ class ClientConnection:
 class OverwatchLink(Node):
     def __init__(self) -> None:
         super().__init__("overwatch_link")
-        robot = os.environ.get("VEHICLE_NAME", "scooby")
+        robot = os.environ.get("VEHICLE_NAME", "birdie")
         defaults = {
             "port": 8765,
             "bind_address": "0.0.0.0",

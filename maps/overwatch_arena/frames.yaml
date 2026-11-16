@@ -367,7 +367,7 @@ frames:
       roll: 0.0
       pitch: 0.0
       yaw: -1.9199
-  map_0/prop_orange_drone:
+  map_0/prop_orange_bot:
     relative_to: ~
     pose:
       x: 0.0

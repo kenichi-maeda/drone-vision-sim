@@ -15,4 +15,5 @@ docs/handoff_*.md
 # the .venv file
 .venv/
 overwatch/.venv/
+overwatch/.pytest_cache/
 

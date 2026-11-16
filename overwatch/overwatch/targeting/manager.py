@@ -115,6 +115,12 @@ class TargetManager:
         if self.lost_since is not None and now - self.lost_since <= self.reacquire_window_s:
             self._try_reacquire(now)
 
+    def check(self, now: float) -> None:
+        """Age the lock even when no new results arrive (feed lost, inference stalled)."""
+        if self.track_id is not None and self.lost_since is None and now - self.last_seen_at > self.lost_after_s:
+            self.lost_since = now
+            self._say("warn", f"TARGET LOST: #{self.track_id} {self.describe(self.last)} (no fresh detections)")
+
     def _try_reacquire(self, now: float) -> None:
         old = self.last
         matches = [d for d in self.lockable()

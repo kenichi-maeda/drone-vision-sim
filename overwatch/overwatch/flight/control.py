@@ -91,6 +91,9 @@ class FlightControl:
 
     async def _emergency(self, name: str, source: str, vehicle: VehicleState, target: dict | None) -> str:
         self.clear_input()
+        mode_before = self.mode
+        # After an emergency the operator must take manual control again on purpose.
+        self.mode = "AUTONOMOUS"
         if name == "kill":
             action = self.cfg.get("estop_action", "kill")
             event = "KILL"
@@ -102,7 +105,7 @@ class FlightControl:
         delivered = seq is not None
         self.events.record(
             event, source=source, action=action, delivered=delivered, seq=seq,
-            control_mode=self.mode, vehicle=vehicle.to_dict(), target=target,
+            control_mode=mode_before, vehicle=vehicle.to_dict(), target=target,
         )
         if delivered:
             self._pending[seq] = {"event": event, "log": True}

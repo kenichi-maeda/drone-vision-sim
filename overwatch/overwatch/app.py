@@ -215,6 +215,10 @@ class Runtime:
         period = 1.0 / float(self.cfg["flight"].get("control_rate_hz", 20))
         while True:
             started = monotonic()
+            self.targets.check(started)
+            for level, text in self.targets.messages:
+                self.notify(level, text)
+            self.targets.messages.clear()
             try:
                 await self.control.tick(started, self.health(started), self.targets.get_target_state(started))
             except Exception as error:

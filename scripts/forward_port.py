@@ -6,8 +6,8 @@ the Mac cannot reach. Run this inside the devcontainer, which uses host
 networking, so OrbStack exposes the forwarded port on the Mac as
 localhost:<port>. Stop it with Ctrl-C.
 
-    python3 scripts/forward_port.py --robot scooby               # OVERWATCH link, port 8765
-    python3 scripts/forward_port.py --robot scooby --port 8090   # camera_view
+    python3 scripts/forward_port.py --robot birdie               # OVERWATCH link, port 8765
+    python3 scripts/forward_port.py --robot birdie --port 8090   # camera_view
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ async def pump(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> No
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--robot", default="scooby", help="virtual robot name (default: scooby)")
+    parser.add_argument("--robot", default="birdie", help="virtual robot name (default: birdie)")
     parser.add_argument("--port", type=int, default=8765, help="port on the robot (default: 8765)")
     parser.add_argument("--listen-port", type=int, help="local port (default: same as --port)")
     args = parser.parse_args()
