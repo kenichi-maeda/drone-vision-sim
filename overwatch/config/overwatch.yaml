@@ -1,0 +1,108 @@
+# OVERWATCH configuration: the one file for camera source, flight adapter,
+# model weights, thresholds and keybindings.
+# Relative paths are resolved from the overwatch/ directory.
+
+# Which entry of `sources` to use. Override with: python -m overwatch --source live
+source: sim
+
+sources:
+  sim:
+    # Virtual drone in the Duckiematrix. overwatch_link runs in the workbench;
+    # scripts/forward_port.py makes it reachable on the Mac at this address.
+    feed: link
+    flight: link
+    link: {host: 127.0.0.1, port: 8765}
+  live:
+    # Physical drone running the Ente stack (ROS 2 + PX4 + MAVROS): run the same
+    # overwatch_link node on it and set its address here.
+    feed: link
+    flight: link
+    link: {host: 192.168.1.50, port: 8765}   # placeholder, set to your drone
+  live_daffy:
+    # Physical drone running Daffy pidrone_pkg (ROS 1). Both adapters are stubs:
+    # see overwatch/feed/mjpeg.py and overwatch/flight/pidrone.py.
+    feed: mjpeg
+    flight: pidrone
+    mjpeg_url: http://DRONE:8080/stream?topic=/raspicam_node/image&type=ros_compressed
+    rosbridge_url: ws://DRONE:9090
+  replay:
+    # Recorded frames, no vehicle. For development and tests.
+    feed: replay
+    flight: none
+    replay: {path: recordings/latest, fps: 15, loop: true}
+
+perception:
+  # "local" runs YOLO in this process. Or ws://HOST:8710 to use a perception
+  # server started elsewhere with: python -m overwatch.perception.server
+  host: local
+  model: weights/yolov8s-worldv2.pt
+  device: mps          # mps (Apple GPU) | cpu | cuda
+  imgsz: 640
+  conf: 0.15
+  iou: 0.5
+  tracker: config/bytetrack.yaml
+  # Each class: the label OVERWATCH uses, the YOLO-World text prompts that
+  # detect it, and the words an operator may type for it.
+  classes:
+    - name: robot
+      prompts: [toy robot car]
+      synonyms: [robot, duckiebot, bot, car, rover, vehicle]
+    - name: duckie
+      prompts: [rubber duck]
+      synonyms: [duckie, duck, ducky, rubber duck]
+    - name: drone
+      prompts: [quadcopter drone]
+      synonyms: [drone, quadcopter, quad]
+  color:
+    margin: 0.2          # fraction of the box ignored on each side
+    min_saturation: 0.35 # pixels below this are treated as background (gray, white, black)
+    min_value: 0.2
+    min_fraction: 0.4    # dominant hue must cover this share of kept pixels, else "unknown"
+
+targeting:
+  lost_after_s: 0.5        # no detection of the locked track for this long -> TARGET LOST
+  reacquire_window_s: 3.0  # after a loss, a unique same-class same-color object re-locks
+
+nl:
+  clarify_timeout_s: 15
+  llm_fallback:
+    enabled: false         # optional Claude fallback; needs ANTHROPIC_API_KEY
+    model: claude-haiku-5-5
+    timeout_s: 4
+
+flight:
+  estop_action: kill       # kill (force-disarm, drone falls) | land
+  planar_speed_m_s: 0.3
+  vertical_speed_m_s: 0.2
+  yaw_rate_rad_s: 0.6
+  control_rate_hz: 20
+  input_timeout_s: 0.25    # browser key state older than this -> zero velocity
+  frame_timeout_s: 0.5     # no camera frame for this long -> FEED LOST
+  inference_timeout_s: 1.0 # frames arriving but none processed for this long -> INFERENCE STALLED
+
+# KeyboardEvent.code names. "Shift+" makes a chord.
+keys:
+  forward: [KeyW, ArrowUp]
+  back: [KeyS, ArrowDown]
+  left: [KeyA, ArrowLeft]
+  right: [KeyD, ArrowRight]
+  up: [KeyR]
+  down: [KeyF]
+  yaw_left: [KeyQ]
+  yaw_right: [KeyE]
+  toggle_mode: [KeyM]
+  arm: [KeyY]
+  disarm: [KeyH]
+  takeoff: [KeyT]
+  land: [KeyL]
+  land_now: [Space]
+  kill: [Shift+Escape]
+  cycle_next: [Tab]
+  cycle_prev: [Shift+Tab]
+  lock: [Enter]
+  release: [Backspace]
+  focus_command: [Slash]
+
+ui: {host: 127.0.0.1, port: 8700}
+logging: {events_dir: logs}
+recording: {dir: recordings, interval_s: 0.5}
