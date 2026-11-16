@@ -1,0 +1,14 @@
+# OVERWATCH ground station (Mac). Python 3.12.
+# Versions are the ones verified on Apple silicon (MPS) on 2026-11-16.
+ultralytics==8.4.215
+torch==2.15.0
+torchvision==0.29.2
+# YOLO-World's text encoder; Ultralytics would otherwise try to install it at runtime.
+clip @ git+https://github.com/ultralytics/CLIP.git@7ffa84b3bfa40c42ecc1c77147a855e69cb2dd40
+numpy==2.5.5
+opencv-python==5.0.0.93
+fastapi==0.135.1
+uvicorn==0.44.0
+websockets==17.4
+pyyaml==6.0.3
+pytest==9.1.0

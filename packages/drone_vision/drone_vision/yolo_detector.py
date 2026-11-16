@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from time import monotonic
 
 import cv2
@@ -13,7 +14,8 @@ from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray, Header
 
 
-CAMERA_TOPIC = "/birdie/camera_node/image/compressed"
+# /environment.sh exports VEHICLE_NAME for the robot the workbench runs on.
+CAMERA_TOPIC = f"/{os.environ.get('VEHICLE_NAME', 'birdie')}/camera_node/image/compressed"
 ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
 MODEL_INPUT_SIZE = 640
 COCO_STOP_SIGN_CLASS = 11

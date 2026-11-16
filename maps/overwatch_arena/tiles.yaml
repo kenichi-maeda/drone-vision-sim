@@ -1,0 +1,63 @@
+version: 1.0
+tiles:
+  # Prefab-backed types: curve, straight, 3way, 4way, asphalt
+  map_0/tile_0_0:
+    type: asphalt
+  map_0/tile_1_0:
+    type: asphalt
+  map_0/tile_2_0:
+    type: asphalt
+  map_0/tile_3_0:
+    type: asphalt
+  map_0/tile_4_0:
+    type: asphalt
+  map_0/tile_0_1:
+    type: asphalt
+  map_0/tile_1_1:
+    type: asphalt
+  map_0/tile_2_1:
+    type: asphalt
+  map_0/tile_3_1:
+    type: asphalt
+  map_0/tile_4_1:
+    type: asphalt
+  map_0/tile_0_2:
+    type: asphalt
+  map_0/tile_1_2:
+    type: asphalt
+  map_0/tile_2_2:
+    type: asphalt
+  map_0/tile_3_2:
+    type: asphalt
+  map_0/tile_4_2:
+    type: asphalt
+  map_0/tile_0_3:
+    type: asphalt
+  map_0/tile_1_3:
+    type: asphalt
+  map_0/tile_2_3:
+    type: asphalt
+  map_0/tile_3_3:
+    type: asphalt
+  map_0/tile_4_3:
+    type: asphalt
+  map_0/tile_0_4:
+    type: asphalt
+  map_0/tile_1_4:
+    type: asphalt
+  map_0/tile_2_4:
+    type: asphalt
+  map_0/tile_3_4:
+    type: asphalt
+  map_0/tile_4_4:
+    type: asphalt
+  map_0/tile_0_5:
+    type: asphalt
+  map_0/tile_1_5:
+    type: asphalt
+  map_0/tile_2_5:
+    type: asphalt
+  map_0/tile_3_5:
+    type: asphalt
+  map_0/tile_4_5:
+    type: asphalt

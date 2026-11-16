@@ -1,0 +1,396 @@
+version: 1.0
+frames:
+  # OVERWATCH test arena. Drone spawn plus an asphalt pad with colored props.
+  map_0:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  # Spawn heading +y, toward the arena.
+  map_0/vehicle_0:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 1.57079632679
+  # Asphalt pad tiles (tile units, 0.585 m each).
+  map_0/tile_0_0:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -2.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_1_0:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -1.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_2_0:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_3_0:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 1.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_4_0:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 2.0
+      y: 0.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_0_1:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -2.0
+      y: 1.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_1_1:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -1.0
+      y: 1.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_2_1:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 0.0
+      y: 1.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_3_1:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 1.0
+      y: 1.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_4_1:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 2.0
+      y: 1.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_0_2:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -2.0
+      y: 2.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_1_2:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -1.0
+      y: 2.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_2_2:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 0.0
+      y: 2.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_3_2:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 1.0
+      y: 2.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_4_2:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 2.0
+      y: 2.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_0_3:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -2.0
+      y: 3.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_1_3:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -1.0
+      y: 3.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_2_3:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 0.0
+      y: 3.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_3_3:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 1.0
+      y: 3.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_4_3:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 2.0
+      y: 3.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_0_4:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -2.0
+      y: 4.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_1_4:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -1.0
+      y: 4.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_2_4:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 0.0
+      y: 4.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_3_4:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 1.0
+      y: 4.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_4_4:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 2.0
+      y: 4.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_0_5:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -2.0
+      y: 5.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_1_5:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: -1.0
+      y: 5.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_2_5:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 0.0
+      y: 5.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_3_5:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 1.0
+      y: 5.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/tile_4_5:
+    relative_to: ~
+    unit: tiles
+    pose:
+      x: 2.0
+      y: 5.0
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  # Colored props (static, never attached to a robot).
+  map_0/prop_red_bot:
+    relative_to: ~
+    pose:
+      x: -0.55
+      y: 1.15
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.3491
+  map_0/prop_blue_bot:
+    relative_to: ~
+    pose:
+      x: 0.05
+      y: 1.55
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: -0.6109
+  map_0/prop_green_bot:
+    relative_to: ~
+    pose:
+      x: 0.6
+      y: 1.2
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 1.2217
+  map_0/prop_purple_bot:
+    relative_to: ~
+    pose:
+      x: -0.35
+      y: 2.15
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 2.4435
+  map_0/prop_red_bot_2:
+    relative_to: ~
+    pose:
+      x: 0.55
+      y: 2.25
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: -1.9199
+  map_0/prop_orange_drone:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 2.7
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/duckie_a:
+    relative_to: ~
+    pose:
+      x: -0.85
+      y: 1.75
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.5236
+  map_0/duckie_b:
+    relative_to: ~
+    pose:
+      x: 0.85
+      y: 1.85
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: -1.0472

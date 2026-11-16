@@ -1,0 +1,32 @@
+version: 1.0
+vehicles:
+  # The drone. Attach the virtual robot here: dts matrix attach <robot> map_0/vehicle_0
+  map_0/vehicle_0:
+    configuration: DD24
+    id: ''
+    color: ~
+  # Static colored props. They render in the drone camera; markers.yaml primitives do not.
+  map_0/prop_red_bot:
+    configuration: DB21J
+    id: ~
+    color: "#d01818"
+  map_0/prop_blue_bot:
+    configuration: DB21J
+    id: ~
+    color: "#1838d8"
+  map_0/prop_green_bot:
+    configuration: DB18
+    id: ~
+    color: "#18b030"
+  map_0/prop_purple_bot:
+    configuration: DB18
+    id: ~
+    color: "#a020c0"
+  map_0/prop_red_bot_2:
+    configuration: DB18
+    id: ~
+    color: "#d01818"
+  map_0/prop_orange_drone:
+    configuration: DD24
+    id: ~
+    color: "#f07010"

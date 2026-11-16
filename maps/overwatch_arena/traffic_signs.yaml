@@ -1,0 +1,14 @@
+version: 1.0
+traffic_signs: {}
+  # Stop sign removed 2026-11-10 (entry: map_0/sign_stop_north, type: sign_stop).
+# Supported types include sign_stop, sign_yield,
+# sign_right_T_intersect, sign_left_T_intersect, sign_T_intersect,
+# sign_4_way_intersect, sign_do_not_enter, sign_duck_crossing,
+# sign_no_right_turn, sign_no_left_turn, sign_oneway_right,
+# sign_oneway_left, sign_pedestrian, sign_t_light_ahead, sign_parking
+# Example:
+# traffic_signs:
+#   map_0/sign_stop_0:
+#     id: 1
+#     type: sign_stop
+#     family: 36h11
