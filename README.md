@@ -178,3 +178,50 @@ workbench. Then run `python3 scripts/view_camera.py` on the sim machine and open
 the URL it prints (port 8090) in a browser. The page shows the camera with the
 YOLO box, plus the flight phase, confidence, error, and box area. It is
 read-only.
+
+## Identify objects and colors
+
+Two perception outputs run alongside the flight target. Neither sends flight
+commands, and the flight target on `/drone_vision/yolo_detection` is unchanged.
+
+- **YOLO + color:** `yolo_detector` also publishes every object it sees (any
+  COCO class above the confidence threshold), each labeled with its main color,
+  as JSON on `/drone_vision/detections`, e.g.
+  `[{"class_name": "stop_sign", "color": "red", "confidence": 0.96, ...}]`.
+- **OpenCV colors only:** `color_detector` finds the largest red, orange,
+  yellow, green, blue and purple region in each frame and publishes them as JSON
+  on `/drone_vision/color_detections`. Turn it off with `COLOR_DETECTOR=false`
+  in `target.env`.
+
+The color helpers are in `packages/drone_vision/drone_vision/color_utils.py`.
+Adjust `COLOR_RANGES` (HSV) there if the simulator's lighting puts a color in
+the wrong bin.
+
+The test map has two targets: the yellow duckie (YOLO: `sports_ball`) and a red
+stop sign (YOLO: `stop_sign`) on the opposite side of the spawn point.
+
+**Watch it live:** with `CAMERA_VIEWER=true`, the viewer page lists "YOLO sees"
+and "Colors". `CAMERA_VIEWER_STREAM=yolo` shows YOLO boxes with colors;
+`CAMERA_VIEWER_STREAM=color` shows the OpenCV color boxes.
+
+**From a terminal:**
+
+```bash
+docker exec dts-virtual-birdie docker exec dts-run-drone-vision-sim \
+  bash -lc 'source /environment.sh && ros2 topic echo /drone_vision/detections --once'
+
+docker exec dts-virtual-birdie docker logs --since 1m dts-run-drone-vision-sim 2>&1 \
+  | grep -E 'YOLO sees|colors:' | tail -20
+```
+
+**Without the simulator:** `scripts/test_vision.py` runs both detectors on image
+files and saves annotated copies to `debug/vision/`. It needs only Python 3
+with `opencv-python` and `numpy`:
+
+```bash
+python3 scripts/test_vision.py path/to/image.jpg path/to/folder/
+```
+
+To test it on frames the sim camera saw, copy the camera probe's samples out of
+the workbench (paths in `camera_probe.py`), e.g.
+`/tmp/duckiedrone_camera_sample_00.jpg`.

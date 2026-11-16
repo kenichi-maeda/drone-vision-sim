@@ -1,7 +1,15 @@
-"""Read-only YOLOv8n COCO detector for the Duckiedrone front camera."""
+"""Read-only YOLOv8n COCO detector for the Duckiedrone front camera.
+
+Two outputs from one network pass:
+  /drone_vision/yolo_detection  the single flight target (unchanged format,
+                                read by safe_hover)
+  /drone_vision/detections      every object YOLO sees, each with its OpenCV
+                                color, as JSON (for identification tests)
+"""
 
 from __future__ import annotations
 
+import json
 from time import monotonic
 
 import cv2
@@ -10,12 +18,25 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import Float32MultiArray, Header
+from std_msgs.msg import Float32MultiArray, Header, String
+
+from .color_utils import DRAW_COLORS, dominant_color, draw_label
+from .detection_utils import detect_all, forward
 
 
 CAMERA_TOPIC = "/birdie/camera_node/image/compressed"
 ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
-MODEL_INPUT_SIZE = 640
+ALL_DETECTIONS_TOPIC = "/drone_vision/detections"
+MAX_BOX_AREA_FRACTION = 0.18
+
+
+def _iou(a: list[float], b: list[float]) -> float:
+    """Overlap of two (x_min, y_min, x_max, y_max) boxes, 0 to 1."""
+    width = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    height = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    inter = width * height
+    union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter
+    return inter / union if union > 0 else 0.0
 COCO_STOP_SIGN_CLASS = 11
 COCO_CLASS_NAMES = dict(
     enumerate(
@@ -49,6 +70,9 @@ class YoloDetector(Node):
         # Optional allowlist, used only with target_class_id=-1: report the
         # best detection among these COCO classes and ignore all others.
         self.declare_parameter("allowed_class_ids", [0])
+        # Also publish every detected object (any class) with its color on
+        # /drone_vision/detections. Does not change the flight target.
+        self.declare_parameter("report_all_detections", True)
         model_path = str(self.get_parameter("model_path").value)
         if not model_path:
             raise ValueError("model_path must point to the YOLOv8n ONNX file")
@@ -76,8 +100,10 @@ class YoloDetector(Node):
         self._target_description = (
             "any COCO class" if self._target_class_id == -1 else self._target_class_name
         )
+        self._report_all = bool(self.get_parameter("report_all_detections").value)
         self._frame_count = 0
         self._last_log_at = 0.0
+        self._last_all_log_at = 0.0
         self._last_miss_log_at = 0.0
         self._net = cv2.dnn.readNetFromONNX(model_path)
         self._net.setPreferableBackend(cv2.dnn.DNN_BACKEND_OPENCV)
@@ -91,6 +117,7 @@ class YoloDetector(Node):
             Float32MultiArray, "/drone_vision/yolo_detection", 10
         )
         self._frame_pub = self.create_publisher(Header, "/drone_vision/yolo_frame", 10)
+        self._all_pub = self.create_publisher(String, ALL_DETECTIONS_TOPIC, 10)
         # Camera frame with the reported detection drawn on it, for live viewing.
         # Only encoded while something is subscribed, so it costs nothing otherwise.
         self._annotated_pub = self.create_publisher(
@@ -108,36 +135,15 @@ class YoloDetector(Node):
         if self._target_class_id == COCO_STOP_SIGN_CLASS:
             self.get_logger().info("Stop-sign detection is YOLO-only; no red-shape fallback")
 
-    @staticmethod
-    def _letterbox(image: np.ndarray) -> tuple[np.ndarray, float, int, int]:
-        """Resize without changing aspect ratio and pad to 640x640."""
-        height, width = image.shape[:2]
-        scale = min(MODEL_INPUT_SIZE / width, MODEL_INPUT_SIZE / height)
-        resized_width = int(round(width * scale))
-        resized_height = int(round(height * scale))
-        resized = cv2.resize(image, (resized_width, resized_height))
-        left = (MODEL_INPUT_SIZE - resized_width) // 2
-        top = (MODEL_INPUT_SIZE - resized_height) // 2
-        padded = np.full(
-            (MODEL_INPUT_SIZE, MODEL_INPUT_SIZE, 3), 114, dtype=np.uint8
-        )
-        padded[top : top + resized_height, left : left + resized_width] = resized
-        return padded, scale, left, top
+    def _infer(
+        self, image: np.ndarray, predictions: np.ndarray, scale: float, left: int, top: int
+    ) -> tuple[float, list[float], int] | None:
+        """Return confidence and original-image box for the best target hit.
 
-    def _infer(self, image: np.ndarray) -> tuple[float, list[float], int] | None:
-        """Return confidence and original-image box for the best target hit."""
+        `predictions`, `scale`, `left`, `top` come from detection_utils.forward,
+        so the network runs once per frame for both outputs.
+        """
         height, width = image.shape[:2]
-        padded, scale, left, top = self._letterbox(image)
-        blob = cv2.dnn.blobFromImage(
-            padded,
-            scalefactor=1.0 / 255.0,
-            size=(MODEL_INPUT_SIZE, MODEL_INPUT_SIZE),
-            swapRB=True,
-            crop=False,
-        )
-        self._net.setInput(blob)
-        output = self._net.forward()
-        predictions = output[0].T
         class_scores = predictions[:, 4:]
         if self._target_class_id == -1:
             if self._allowed_class_ids is not None:
@@ -186,8 +192,14 @@ class YoloDetector(Node):
         header: Header,
         image: np.ndarray,
         detection: tuple[float, list[float], int] | None,
+        target_color: str = "",
+        all_detections: list[dict] | None = None,
     ) -> None:
-        """Publish the frame with the reported box drawn on it (viewer only)."""
+        """Publish the frame with the boxes drawn on it (viewer only).
+
+        Every detected object gets a thin box in its own color; the flight
+        target gets a thick green box on top.
+        """
         if self._annotated_pub.get_subscription_count() == 0:
             return
         height, width = image.shape[:2]
@@ -195,16 +207,26 @@ class YoloDetector(Node):
         cx, cy = width // 2, height // 2
         cv2.line(image, (cx - 10, cy), (cx + 10, cy), (200, 200, 200), 1)
         cv2.line(image, (cx, cy - 10), (cx, cy + 10), (200, 200, 200), 1)
+        for item in all_detections or []:
+            if detection is not None and item["class_id"] == detection[2] and _iou(item["bbox"], detection[1]) > 0.7:
+                continue  # the flight target, drawn below with its own label
+            x_min, y_min, x_max, y_max = item["bbox"]
+            box_color = DRAW_COLORS.get(item["color"], (255, 255, 255))
+            cv2.rectangle(image, (x_min, y_min), (x_max, y_max), box_color, 1)
+            draw_label(
+                image,
+                f"{item['class_name']} {item['color']} {item['confidence']:.2f}",
+                (x_min, y_min),
+                box_color,
+            )
         if detection is not None:
             confidence, (x_min, y_min, x_max, y_max), class_id = detection
             label = (
-                f"{COCO_CLASS_NAMES.get(class_id, f'coco_class_{class_id}')} {confidence:.2f}"
+                f"{COCO_CLASS_NAMES.get(class_id, f'coco_class_{class_id}')} {target_color} {confidence:.2f}"
             )
             top_left = (int(x_min), int(y_min))
             cv2.rectangle(image, top_left, (int(x_max), int(y_max)), (0, 255, 0), 2)
-            label_at = (top_left[0], max(top_left[1] - 6, 14))
-            cv2.putText(image, label, label_at, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3)
-            cv2.putText(image, label, label_at, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+            draw_label(image, label, top_left, (0, 255, 0))
         ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if not ok:
             return
@@ -223,7 +245,8 @@ class YoloDetector(Node):
             self.get_logger().warning("Could not decode camera frame for YOLO")
             return
         started_at = monotonic()
-        detection = self._infer(image)
+        predictions, scale, left, top = forward(self._net, image)
+        detection = self._infer(image, predictions, scale, left, top)
         # A heartbeat means YOLO actually processed this camera frame, even
         # when the target was absent. Preserve its capture timestamp.
         self._frame_pub.publish(message.header)
@@ -234,12 +257,30 @@ class YoloDetector(Node):
             (detection[1][2] - detection[1][0])
             * (detection[1][3] - detection[1][1])
             / float(image.shape[0] * image.shape[1])
-            > 0.18
+            > MAX_BOX_AREA_FRACTION
         )
         if oversized_detection:
             detection = None
         inference_ms = (monotonic() - started_at) * 1000.0
-        self._publish_annotated(message.header, image, detection)
+        # Colors are read before anything is drawn on the image.
+        target_color = dominant_color(image, tuple(detection[1]))[0] if detection is not None else ""
+        all_detections = None
+        if self._report_all:
+            all_detections = detect_all(
+                image, predictions, scale, left, top,
+                confidence_threshold=self._confidence_threshold,
+                nms_threshold=self._nms_threshold,
+                max_box_area_fraction=MAX_BOX_AREA_FRACTION,
+            )
+            self._all_pub.publish(String(data=json.dumps(all_detections)))
+            now = monotonic()
+            if now - self._last_all_log_at >= 1.0:
+                seen = ", ".join(
+                    f"{d['class_name']} ({d['color']}) {d['confidence']:.2f}" for d in all_detections
+                ) or "nothing"
+                self.get_logger().info(f"YOLO sees: {seen}")
+                self._last_all_log_at = now
+        self._publish_annotated(message.header, image, detection, target_color, all_detections)
         if detection is None:
             now = monotonic()
             if now - self._last_miss_log_at >= 3.0:
@@ -273,7 +314,8 @@ class YoloDetector(Node):
         now = monotonic()
         if now - self._last_log_at >= 0.5:
             self.get_logger().info(
-                f"class={COCO_CLASS_NAMES.get(class_id, f'coco_class_{class_id}')}, detector={detector_method}, "
+                f"class={COCO_CLASS_NAMES.get(class_id, f'coco_class_{class_id}')}, color={target_color}, "
+                f"detector={detector_method}, "
                 f"confidence={confidence:.3f}, "
                 f"center_px=({center_x:.1f}, {center_y:.1f}), "
                 f"error_norm=({error_x:+.3f}, {error_y:+.3f}), "

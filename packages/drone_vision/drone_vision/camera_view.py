@@ -1,8 +1,11 @@
-"""Live browser view of the annotated YOLO camera stream. Viewer only.
+"""Live browser view of an annotated camera stream. Viewer only.
 
 Serves the detector's annotated frames (latest frame and MJPEG), plus a small
-status page with the flight phase and the target error. It publishes nothing and sends no
-flight commands.
+status page with the flight phase, the target error, everything YOLO sees and
+the colors OpenCV finds. It publishes nothing and sends no flight commands.
+
+The `image_topic` parameter picks the stream: the YOLO view (default) or
+/drone_vision/color_image/compressed for the color detector's view.
 """
 
 from __future__ import annotations
@@ -21,6 +24,8 @@ from std_msgs.msg import Float32MultiArray, String
 
 ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
 DETECTION_TOPIC = "/drone_vision/yolo_detection"
+ALL_DETECTIONS_TOPIC = "/drone_vision/detections"
+COLOR_TOPIC = "/drone_vision/color_detections"
 PHASE_TOPIC = "/drone_vision/calibration_phase"
 STALE_AFTER_S = 1.0
 BOUNDARY = "frame"
@@ -49,6 +54,8 @@ PAGE = """<!doctype html>
     <dt>Confidence</dt><dd id="confidence">-</dd>
     <dt>Error x</dt><dd id="error_x">-</dd>
     <dt>Box area</dt><dd id="area">-</dd>
+    <dt>YOLO sees</dt><dd id="objects">-</dd>
+    <dt>Colors</dt><dd id="colors">-</dd>
   </dl>
 </main>
 <script>
@@ -62,6 +69,12 @@ PAGE = """<!doctype html>
       text("confidence", d ? d.confidence.toFixed(2) : "-");
       text("error_x", d ? d.error_x.toFixed(3) : "-");
       text("area", d ? (d.width * d.height * 100).toFixed(2) + " %" : "-");
+      const objects = status.objects || [];
+      text("objects", objects.length
+        ? objects.map(o => `${o.class_name} (${o.color}) ${o.confidence.toFixed(2)}`).join(", ") : "-");
+      const colors = status.colors || [];
+      text("colors", colors.length
+        ? colors.map(c => `${c.color} ${(c.area_fraction * 100).toFixed(1)}%`).join(", ") : "-");
     } catch (error) {
       text("phase", "no connection");
     }
@@ -88,7 +101,9 @@ class CameraView(Node):
     def __init__(self) -> None:
         super().__init__("camera_view")
         self.declare_parameter("port", 8090)
+        self.declare_parameter("image_topic", ANNOTATED_TOPIC)
         port = int(self.get_parameter("port").value)
+        image_topic = str(self.get_parameter("image_topic").value)
 
         self._frame_ready = threading.Condition()
         self._frame: bytes | None = None
@@ -96,15 +111,23 @@ class CameraView(Node):
         self._phase = ""
         self._detection: list[float] | None = None
         self._detection_at = 0.0
+        self._objects: list = []
+        self._objects_at = 0.0
+        self._colors: list = []
+        self._colors_at = 0.0
 
-        self.create_subscription(CompressedImage, ANNOTATED_TOPIC, self._on_frame, QoSProfile(depth=1))
+        self.create_subscription(CompressedImage, image_topic, self._on_frame, QoSProfile(depth=1))
         self.create_subscription(Float32MultiArray, DETECTION_TOPIC, self._on_detection, 10)
+        self.create_subscription(String, ALL_DETECTIONS_TOPIC, self._on_objects, 10)
+        self.create_subscription(String, COLOR_TOPIC, self._on_colors, 10)
         self.create_subscription(String, PHASE_TOPIC, self._on_phase, 10)
 
         self._server = ThreadingHTTPServer(("0.0.0.0", port), self._make_handler())
         self._server.daemon_threads = True
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
-        self.get_logger().info(f"Camera view serving on port {port} (/, /frame.jpg, /stream, /status). Viewer only.")
+        self.get_logger().info(
+            f"Camera view of {image_topic} serving on port {port} (/, /frame.jpg, /stream, /status). Viewer only."
+        )
 
     def _on_frame(self, message: CompressedImage) -> None:
         with self._frame_ready:
@@ -115,6 +138,20 @@ class CameraView(Node):
     def _on_detection(self, message: Float32MultiArray) -> None:
         self._detection = list(message.data)
         self._detection_at = monotonic()
+
+    def _on_objects(self, message: String) -> None:
+        try:
+            self._objects = json.loads(message.data)
+            self._objects_at = monotonic()
+        except ValueError:
+            pass
+
+    def _on_colors(self, message: String) -> None:
+        try:
+            self._colors = json.loads(message.data)
+            self._colors_at = monotonic()
+        except ValueError:
+            pass
 
     def _on_phase(self, message: String) -> None:
         self._phase = message.data
@@ -131,7 +168,10 @@ class CameraView(Node):
                 "width": data[6],
                 "height": data[7],
             }
-        return {"phase": self._phase, "detection": detection}
+        now = monotonic()
+        objects = self._objects if now - self._objects_at <= STALE_AFTER_S else []
+        colors = self._colors if now - self._colors_at <= STALE_AFTER_S else []
+        return {"phase": self._phase, "detection": detection, "objects": objects, "colors": colors}
 
     def _next_frame(self, last_number: int) -> tuple[bytes, int] | None:
         """Block until a frame newer than last_number arrives (or time out)."""

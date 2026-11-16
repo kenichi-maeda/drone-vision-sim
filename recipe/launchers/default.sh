@@ -20,11 +20,24 @@ dt-exec ros2 run drone_vision yolo_detector --ros-args \
     -p target_class_id:="${YOLO_TARGET_CLASS_ID:--1}" \
     -p allowed_class_ids:="[${YOLO_ALLOWED_CLASS_IDS:-11,32}]" \
     -p confidence_threshold:="${YOLO_CONFIDENCE_THRESHOLD:-0.35}"
-# Optional live browser view of the annotated YOLO stream (CAMERA_VIEWER=true in
-# target.env). Viewer only; the detector encodes frames only while it is running.
+# OpenCV color detector (COLOR_DETECTOR=true in target.env). Perception only.
+if [ "${COLOR_DETECTOR:-true}" = "true" ]; then
+    dt-exec ros2 run drone_vision color_detector --ros-args \
+        -p min_area_fraction:="${COLOR_MIN_AREA_FRACTION:-0.002}"
+fi
+# Optional live browser view of an annotated stream (CAMERA_VIEWER=true in
+# target.env). CAMERA_VIEWER_STREAM picks "yolo" (objects + their colors) or
+# "color" (OpenCV color blobs). Viewer only; the detectors encode frames only
+# while it is running.
 if [ "${CAMERA_VIEWER:-false}" = "true" ]; then
+    if [ "${CAMERA_VIEWER_STREAM:-yolo}" = "color" ]; then
+        VIEWER_TOPIC=/drone_vision/color_image/compressed
+    else
+        VIEWER_TOPIC=/drone_vision/yolo_image/compressed
+    fi
     dt-exec ros2 run drone_vision camera_view --ros-args \
-        -p port:="${CAMERA_VIEWER_PORT:-8090}"
+        -p port:="${CAMERA_VIEWER_PORT:-8090}" \
+        -p image_topic:="${VIEWER_TOPIC}"
 fi
 # Flight stays disabled unless explicitly enabled. The controller's YOLO
 # search, centering, and approach options have short, validated defaults.
