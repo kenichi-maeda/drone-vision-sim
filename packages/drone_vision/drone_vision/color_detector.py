@@ -4,7 +4,7 @@ Finds the largest blob of each configured color in every processed frame and
 publishes them as JSON. Perception only: it sends no flight commands.
 
 Topics:
-  in   /birdie/camera_node/image/compressed
+  in   /<robot name>/camera_node/image/compressed
   out  /drone_vision/color_detections         std_msgs/String (JSON list)
   out  /drone_vision/color_image/compressed   annotated frame, only while watched
 """
@@ -12,6 +12,7 @@ Topics:
 from __future__ import annotations
 
 import json
+import os
 from time import monotonic
 
 import cv2
@@ -24,7 +25,8 @@ from std_msgs.msg import String
 
 from .color_utils import COLOR_RANGES, draw_blobs, find_color_blobs
 
-CAMERA_TOPIC = "/birdie/camera_node/image/compressed"
+# The camera topic is namespaced by the robot's name (VEHICLE_NAME in Duckietown containers).
+CAMERA_TOPIC = f"/{os.environ.get('VEHICLE_NAME') or 'birdie'}/camera_node/image/compressed"
 DETECTIONS_TOPIC = "/drone_vision/color_detections"
 ANNOTATED_TOPIC = "/drone_vision/color_image/compressed"
 

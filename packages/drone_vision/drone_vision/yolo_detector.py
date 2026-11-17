@@ -10,6 +10,7 @@ Two outputs from one network pass:
 from __future__ import annotations
 
 import json
+import os
 from time import monotonic
 
 import cv2
@@ -24,7 +25,8 @@ from .color_utils import DRAW_COLORS, dominant_color, draw_label
 from .detection_utils import detect_all, forward
 
 
-CAMERA_TOPIC = "/birdie/camera_node/image/compressed"
+# The camera topic is namespaced by the robot's name (VEHICLE_NAME in Duckietown containers).
+CAMERA_TOPIC = f"/{os.environ.get('VEHICLE_NAME') or 'birdie'}/camera_node/image/compressed"
 ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
 ALL_DETECTIONS_TOPIC = "/drone_vision/detections"
 MAX_BOX_AREA_FRACTION = 0.18
