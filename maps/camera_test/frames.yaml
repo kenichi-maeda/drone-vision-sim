@@ -1,0 +1,61 @@
+version: 1.0
+frames:
+  # Fields supported on each frame: relative_to, unit, pose, twist
+  map_0:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 0.0
+      z: 0
+      roll: 0
+      pitch: 0
+      yaw: 0
+  map_0/vehicle_0:
+    relative_to: ~
+    pose:
+      x: 0
+      y: 0
+      z: 0
+      roll: 0
+      pitch: 0
+      # Preserve the original vehicle heading; navigation must search visually.
+      yaw: 1.57079632679
+  # CAMERA TEST MAP (copy of tag_sandbox): both targets sit in front of the
+  # parked drone (spawn at origin, facing +y) so YOLO and the color detector
+  # can be tested without flying. Use tag_sandbox for flight missions.
+  # Red stop sign, ahead and slightly right, SUNK 10 cm into the ground so its
+  # face sits low enough for the downward-tilted camera of the parked drone.
+  # Tests: (0.12, 1.0, z 0) showed only the pole; (0.15, 0.6, z -0.08,
+  # yaw 4.47) showed the sign's brown back, nearly in frame. Turned 180 deg.
+  map_0/sign_stop_north:
+    relative_to: ~
+    pose:
+      x: 0.15
+      y: 0.6
+      z: -0.10
+      roll: 0.0
+      pitch: 0.0
+      yaw: 1.33
+  # Yellow duckie, nearly straight ahead and close, so it is large and away
+  # from the fisheye edge (YOLO: sports_ball). At (-0.15, 0.35) it showed at
+  # the far left edge, too small for YOLO.
+  map_0/duckie_target:
+    relative_to: ~
+    pose:
+      x: -0.04
+      y: 0.28
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 1.57079632679
+  # Keep the landing marker off the front-camera test line; use it later for
+  # the separate downward-camera landing experiment.
+  map_0/groundtag_301:
+    relative_to: ~
+    pose:
+      x: 1.5
+      y: 0.0
+      z: 0.001
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0

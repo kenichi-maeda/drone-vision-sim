@@ -1,0 +1,12 @@
+version: 1.0
+vehicles:
+  # Supported configurations: DB18, DB19, DB21M, DB21J, DD24, DBR4
+  # Example:
+  # map_0/vehicle_extra:
+  #   configuration: DD24
+  #   id: ~
+  #   color: "#ffffff"
+  map_0/vehicle_0:
+    configuration: DD24
+    id: ''
+    color: ~

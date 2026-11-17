@@ -1,0 +1,13 @@
+version: 1.0
+ground_tags:
+  # Landing target reserved for the later downward-camera experiment.
+  map_0/groundtag_301:
+    size: 0.35
+    id: 301
+    family: 36h11
+# Example:
+# ground_tags:
+#   map_0/groundtag_300:
+#     size: 0.08
+#     id: 300
+#     family: 36h11

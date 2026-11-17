@@ -1,0 +1,9 @@
+version: 1.0
+watchtowers:
+    {}
+# Supported configurations: WT18, WT19A, WT19B, WT21A, WT21B
+# Example:
+# watchtowers:
+#   map_0/watchtower_0:
+#     configuration: WT21A
+#     id: ~

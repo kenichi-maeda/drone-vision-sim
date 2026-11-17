@@ -1,0 +1,7 @@
+version: 1.0
+tiles: {}
+# Prefab-backed types: curve, straight, 3way, 4way, asphalt
+# Example:
+# tiles:
+#   map_0/tile_0_0:
+#     type: curve
