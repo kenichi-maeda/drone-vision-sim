@@ -1,10 +1,12 @@
 # OVERWATCH operator console
 
-> **Status (2026-11-16):** the console is built on branch `overwatch` and has
-> been tested against a stand-in drone (`overwatch/tools/fake_link.py`), but
-> **not yet in the simulator**. The sim drone is `birdie`. The recon findings
-> below were verified on 2026-11-15. This page will be updated as each
-> capability is verified in the sim.
+> **Status (2026-11-17):** the whole sim session now runs from the workspace
+> devcontainer with one command, `bash scripts/overwatch.sh up`. The Mac
+> only needs a browser: no Mac host runner, Mac `dts` or Mac Python. The
+> console connects to `overwatch_link` on `birdie` and runs YOLO-World on the
+> devcontainer's CPU. The sim drone is `birdie`. The recon findings below were
+> verified on 2026-11-15. This page will be updated as each capability is
+> verified in the sim.
 
 OVERWATCH is a browser-based operator console for the Duckiedrone. It shows
 the drone's camera with live YOLO detections drawn on it. It lets the operator
@@ -35,14 +37,19 @@ will plug in later through the same two adapters.
 | 2026-11-15 | Four Matrix scene experiments using a scratch map (`/home/ubuntu/overwatch-recon-map` in the workspace, not in this repo) | Found which objects the drone camera can see ([below](#placing-objects-in-the-matrix)). |
 | 2026-11-15 | Ran stock and open-vocabulary YOLO on captured sim frames, on the Mac's GPU | Chose the detector ([below](#yolo-on-sim-frames)). |
 | 2026-11-16 | Design decisions agreed | Listed in [Decisions](#decisions). |
+| 2026-11-16 | First sim session with the Mac native renderer and the Mac console | The link connected, and takeoff, OFFBOARD hold and LAND worked through `overwatch_link`. |
+| 2026-11-17 | Moved the whole session into the devcontainer (`scripts/overwatch.sh`) | The Mac host runner broke when the Mac workspace folder was moved (`No such file or directory: '/Users/.../intro_robotics'`). The Matrix now uses the browser (WebGL) renderer, which is served from the devcontainer, and the console runs from a devcontainer venv with CPU PyTorch. All 92 console tests pass there. |
 
 Work is on the branch `overwatch`.
 
 ### Decisions
 
-1. **Perception runs on the Mac** (Apple GPU), leaving the sim container to
-   PX4 and the Matrix. The perception host is a config value, so it can move
-   to a ground station or companion computer later.
+1. **Perception runs in the devcontainer** (CPU) since 2026-11-17, next to
+   the sim. It originally ran on the Mac's Apple GPU. `perception.device:
+   auto` picks `mps`, `cuda` or `cpu`, whichever the machine has, so the same
+   config still works on the Mac. The perception host is a config value
+   (`perception.host: ws://HOST:8710`), so detection can move to a faster
+   machine, a ground station or a companion computer later.
 2. **Detector:** YOLO-World with per-box HSV color classification and no
    training to start. A recall eval of about 100 sim frames comes first.
    YOLO11n gets fine-tuned only if any class falls below about 80% recall at
@@ -57,15 +64,19 @@ Work is on the branch `overwatch`.
    non-destructive abort. Every KILL and LAND NOW event is logged.
 5. **Physical drone stack:** not yet decided (Daffy ROS 1 or Ente ROS 2 +
    PX4). Either way, LIVE sits behind the same feed and flight adapters.
-6. **Repo:** work on branch `overwatch` in the Mac copy, and sync drone-side
-   files into the workspace copy with `scripts/sync_to_workspace.py`
-   (`--dry-run` supported). Nothing is committed unless the lead asks.
+6. **Repo:** work on branch `overwatch` in the workspace copy
+   (`/home/ubuntu/drone-vision-sim`), which is now the copy that runs
+   everything. `scripts/sync_to_workspace.py` is only needed if you still
+   edit in a separate Mac checkout. Nothing is committed unless the lead asks.
 7. **Sim drone:** `birdie`, a virtual DD24 in the workspace devcontainer.
-stil
+8. **Everything runs in the devcontainer** (2026-11-17): Matrix engine,
+   renderer (browser mode), workbench, forwarder and console. The Mac's role
+   is a browser with two tabs.
+
 ## Architecture
 
 ```
-                ┌─────────────── Mac ground station (Python 3.12, FastAPI) ───────────────┐
+          ┌──────── Ground station: workspace devcontainer (Python 3.12, FastAPI) ────────┐
  camera ──▶ FeedSource ──▶ Perception ──▶ TargetManager ──▶ UI server ⇄ browser console
  (SIM|LIVE)               YOLO + track      lock / LOST      (each frame + its detections
                           + color           get_target_state()   sent together, one frame ID)
@@ -77,14 +88,29 @@ stil
 | Module | Responsibility | SIM | LIVE |
 | --- | --- | --- | --- |
 | Feed source | Delivers camera frames | `overwatch_link` node on `birdie`, over TCP | Ente drone: same link. Daffy drone: MJPEG adapter (stub). |
-| Perception | YOLO-World detection, ByteTrack track IDs, HSV color | Mac | Mac, or a remote host set in config |
-| Target manager | Holds the lock, reports TARGET LOST, provides `get_target_state()` | Mac | Mac |
-| Command parser | Turns typed commands into a validated target query | Mac | Mac |
-| Flight control | Modes, key mapping, speed limits, dead-man timers | Mac | Mac |
+| Perception | YOLO-World detection, ByteTrack track IDs, HSV color | Devcontainer (CPU) | Ground station, or a remote host set in config |
+| Target manager | Holds the lock, reports TARGET LOST, provides `get_target_state()` | Devcontainer | Ground station |
+| Command parser | Turns typed commands into a validated target query | Devcontainer | Ground station |
+| Flight control | Modes, key mapping, speed limits, dead-man timers | Devcontainer | Ground station |
 | Flight adapter | Sends commands to the vehicle | `overwatch_link` → MAVROS | Ente drone: same link. Daffy drone: rosbridge adapter (stub). |
-| UI | Browser page: video canvas, HUD, command box | Mac | Mac |
+| UI | Browser page: video canvas, HUD, command box | Served from the devcontainer, viewed in the Mac browser | Same |
 
 Switching SIM → LIVE changes only the feed adapter and the flight adapter.
+
+Where each sim process runs (all in the workspace devcontainer, started by
+`scripts/overwatch.sh up`):
+
+| Process | Port (on the Mac as `localhost:<port>`) | Log |
+| --- | --- | --- |
+| Matrix engine (`dts-matrix-engine` container, host network) | 7501–7505 (engine and WebGL bridge) | `docker logs dts-matrix-engine` |
+| Matrix renderer page (`dts matrix run --browser`) | 8800 | `.run/matrix.log` |
+| Workbench, `overwatch_link` on `birdie` | 8765 inside `birdie` | `.run/workbench.log` |
+| Port forwarder (`scripts/forward_port.py`) | 8765 | `.run/forward.log` |
+| OVERWATCH console (`overwatch/.venv`) | 8700 | `.run/console.log` |
+
+The drone camera image is drawn by the Matrix renderer, which in browser mode
+runs **in the Mac browser tab**. With no Matrix tab open, the sim runs but
+the camera publishes nothing, and the console shows FEED LOST.
 
 **What the operator sees is what YOLO saw.** The browser receives each frame
 together with its detections and target state, and shows only frames that
@@ -95,7 +121,7 @@ frames are dropped, never queued, so delay cannot build up.
 websocket, but it is broken (see below). `overwatch_link` is a small ROS 2
 node that runs in the project workbench on the drone. It sends camera JPEGs
 up and takes flight commands down over one TCP connection. A port forwarder
-in the devcontainer makes it reachable from the Mac.
+in the devcontainer makes it reachable from the console at `127.0.0.1:8765`.
 
 ## Recon findings
 
@@ -174,34 +200,121 @@ drone would likely match the sim interfaces (ROS 2 + PX4 + MAVROS).
 
 ### Start a sim session
 
-The sim drone is `birdie`, a virtual DD24 in the workspace devcontainer.
-Run steps 1–5 in a devcontainer terminal, and step 6 on the Mac. Don't use the
+Everything runs in a terminal of the workspace devcontainer (VS Code
+attached to the container). The Mac only needs a browser. Don't use the
 Mac's own `dts` for virtual robots: they don't work on this Mac.
 
-0. One time only:
-   - If `dts duckiebot virtual list` does not show `birdie`, create it:
-     `dts duckiebot virtual create -t duckiedrone -c DD24 birdie`
-   - Build the patched Matrix engine and make it the image `dts` runs:
-     `bash scripts/build_patched_engine_image.sh --as-default`
-   - On the Mac, create the console's venv:
-     `cd overwatch && /opt/homebrew/bin/python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt`
-1. Start the virtual drone: `dts duckiebot virtual start birdie`
-2. Start the Matrix with the arena map. `--no-pull` keeps `dts` from
-   replacing the patched engine with a newer stock image:
-   `dts matrix run --standalone --no-pull --map /home/ubuntu/drone-vision-sim/maps/overwatch_arena`
-3. Attach the drone to the spawn: `dts matrix attach birdie map_0/vehicle_0`
-4. Build the project image on `birdie` and start the drone-side link:
-   `bash /home/ubuntu/drone-vision-sim/scripts/workbench.sh birdie overwatch`.
-   This wraps `dts code workbench`, which on its own fails here with "No valid
-   DTProject found" (the script explains why).
-5. Forward the link port to the Mac: `python3 scripts/forward_port.py --robot birdie`
-6. On the Mac: `cd overwatch && .venv/bin/python -m overwatch`, then open
-   http://127.0.0.1:8700/.
+**One time only** (in the devcontainer, from `/home/ubuntu/drone-vision-sim`):
+
+- If `dts duckiebot virtual list` does not show `birdie`, create it:
+  `dts duckiebot virtual create -t duckiedrone -c DD24 birdie`
+- Build the patched Matrix engine and make it the image `dts` runs:
+  `bash scripts/build_patched_engine_image.sh --as-default`
+- Create the console's venv. PyTorch comes from the CPU wheel index, which
+  avoids gigabytes of unused CUDA packages:
+
+  ```bash
+  cd overwatch
+  python3 -m venv .venv
+  .venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu \
+      --extra-index-url https://pypi.org/simple torch==2.15.0 torchvision==0.29.2
+  .venv/bin/pip install -r requirements.txt -r requirements-llm.txt
+  .venv/bin/python -m pytest -q        # 92 tests should pass
+  ```
+
+  The first console start downloads YOLO-World's CLIP text encoder (338 MB)
+  into the Ultralytics cache.
+
+**Every session:**
+
+```bash
+cd /home/ubuntu/drone-vision-sim
+bash scripts/overwatch.sh up
+```
+
+`up` starts, in order, whatever is not already running: `birdie`, the Matrix
+engine with `maps/overwatch_arena` and the browser renderer on port 8800,
+`dts matrix attach birdie map_0/vehicle_0`, the workbench with the overwatch
+launcher (it builds the project image first), the link forwarder on port
+8765, and the console on port 8700. At the end it prints two URLs. Open both
+in the Mac browser:
+
+1. **Matrix**: `http://localhost:8800/?...&token=.../` (the exact URL
+   includes your Duckietown token; `bash scripts/overwatch.sh urls` prints it
+   again). This tab **is the renderer**: it draws the 3D arena and the drone
+   camera. Keep it open, and keep it visible in its own window, because
+   browsers pause hidden tabs, and a paused tab means no camera frames.
+2. **OVERWATCH console**: http://localhost:8700/
+
+Other commands:
+
+| Command | What it does |
+| --- | --- |
+| `bash scripts/overwatch.sh status` | Shows what is running, plus the URLs |
+| `bash scripts/overwatch.sh urls` | Prints the two URLs |
+| `bash scripts/overwatch.sh down` | Stops the console, forwarder, workbench and Matrix. `birdie` keeps running. |
+
+Logs are in `.run/` in the project root (`matrix.log`, `workbench.log`,
+`forward.log`, `console.log`). Settings can be overridden through
+environment variables: `OVERWATCH_ROBOT`, `OVERWATCH_MAP`,
+`OVERWATCH_MATRIX_PORT`, `OVERWATCH_CONSOLE_PORT`, `OVERWATCH_LINK_PORT`.
+
+Manual steps, if you need to run a piece by hand (each in its own
+devcontainer terminal):
+
+1. `dts duckiebot virtual start birdie`
+2. `dts matrix run --standalone --no-pull --browser --host 0.0.0.0 --port 8800 --no-tutorial --map /home/ubuntu/drone-vision-sim/maps/overwatch_arena`
+   (`--no-pull` keeps `dts` from replacing the patched engine with a newer
+   stock image)
+3. `dts matrix attach birdie map_0/vehicle_0`
+4. `bash scripts/workbench.sh birdie overwatch` (wraps `dts code workbench`,
+   which on its own fails here with "No valid DTProject found"; the script
+   explains why)
+5. `python3 scripts/forward_port.py --robot birdie`
+6. `cd overwatch && .venv/bin/python -m overwatch`
+
+#### Native renderer (Mac window instead of a browser tab)
+
+```bash
+bash scripts/overwatch.sh up --native
+```
+
+Without `--browser`, `dts matrix run` in the devcontainer hands the renderer
+to the **Mac host runner**: a small server on the Mac (port 61146) that the
+devcontainer starts when VS Code opens it. It opens the native Duckiematrix
+window on the Mac. Everything else (engine, workbench, console) still runs in
+the devcontainer. The native renderer cannot run inside the devcontainer
+itself: the Linux renderer is an x86-64 binary, and the devcontainer is ARM64
+with no FEX emulator and no display.
+
+The host runner remembers the Mac folder it was started from. If that
+folder is moved or renamed, every native launch fails with:
+
+```
+Host runner request failed: [Errno 2] No such file or directory: '/Users/<you>/<old folder>'
+```
+
+That happened on 2026-11-17, when the workspace moved from
+`~/Desktop/intro_robotics` to `~/Desktop/robotics/workspace`. To fix it,
+restart the runner from the new folder, on the Mac:
+
+1. In VS Code: `Cmd+Shift+P` → **Dev Containers: Reopen Folder Locally**.
+2. In a Mac terminal, stop the old runner:
+   `lsof -nP -iTCP:61146 -sTCP:LISTEN` gives its PID, then `kill <PID>`.
+3. **File → Open Folder…** → `~/Desktop/robotics/workspace`, then
+   `Cmd+Shift+P` → **Dev Containers: Reopen in Container** (or **Rebuild
+   Container** if the old path still shows up).
+4. Back in the devcontainer: `bash scripts/overwatch.sh down`, then
+   `bash scripts/overwatch.sh up --native`.
+
+Until the runner is fixed, `up --native` stops with the error above, and
+plain `up` (browser renderer) still works.
 
 To try the console without the simulator, run
 `.venv/bin/python tools/fake_link.py --frames tools/sample_frames` (from
-`overwatch/`) in place of steps 1–5. It plays the frames in a loop and
-pretends to fly. Stop it before step 5 of a real session: both use port 8765.
+`overwatch/`) and then `.venv/bin/python -m overwatch`. It plays the frames
+in a loop and pretends to fly. Stop it before a real session: both use port
+8765.
 
 ### Screen layout
 
@@ -336,6 +449,19 @@ Which stack the physical drone runs is still to be decided (decision 5).
   11411, 11911) and must be stopped first.
 - **PX4 health in sim:** manual flight and the recall eval both depend on a
   converged position estimate.
+- **Mac host runner (native renderer):** on 2026-11-17 it still pointed at
+  the old `~/Desktop/intro_robotics` folder, so `up --native` fails until it
+  is restarted from `~/Desktop/robotics/workspace` (see
+  [Native renderer](#native-renderer-mac-window-instead-of-a-browser-tab)).
+- **Browser renderer (since 2026-11-17):** the drone camera is rendered by
+  the Matrix browser tab, so camera frames stop when that tab is closed,
+  hidden or throttled. Its camera rate and fidelity have not yet been
+  compared with the native Mac renderer's (10–20 Hz).
+- **CPU perception:** YOLO-World on the devcontainer CPU is slower than on
+  the Mac GPU (24 ms per frame). The console drops frames instead of queueing
+  them, so expect a lower annotated frame rate, not growing delay. If it is
+  too slow, run `python -m overwatch.perception.server` on a faster machine
+  and set `perception.host` to it.
 - **Small duckie recall** is likely below 80%, so a fine-tune is likely.
 - **Assumed flight envelope** for the eval: 0.6–1.0 m altitude, 1–3 m from
   targets.

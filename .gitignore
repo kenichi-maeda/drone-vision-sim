@@ -17,3 +17,9 @@ docs/handoff_*.md
 overwatch/.venv/
 overwatch/.pytest_cache/
 
+
+# scripts/overwatch.sh logs and PID files
+.run/
+
+# YOLO-World CLIP text encoder cache (downloaded on first console start)
+weights/

@@ -16,11 +16,26 @@ from .color import classify_color
 log = logging.getLogger("overwatch.perception")
 
 
+def resolve_device(device: str) -> str:
+    """Turn `auto` into mps (Apple GPU), cuda or cpu, whichever this machine has."""
+    if device != "auto":
+        return device
+    import torch
+
+    if torch.backends.mps.is_available():
+        return "mps"
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
+
+
 class YoloWorldPerception(Perception):
     def __init__(self, cfg: dict[str, Any]) -> None:
         from ultralytics import YOLO
 
-        self.cfg = cfg
+        self.cfg = dict(cfg)
+        self.cfg["device"] = resolve_device(str(cfg.get("device", "auto")))
+        cfg = self.cfg
         weights = resolve(cfg["model"])
         if not weights.exists():
             raise FileNotFoundError(

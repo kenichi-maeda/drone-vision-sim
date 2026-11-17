@@ -36,7 +36,7 @@ perception:
   # server started elsewhere with: python -m overwatch.perception.server
   host: local
   model: weights/yolov8s-worldv2.pt
-  device: mps          # mps (Apple GPU) | cpu | cuda
+  device: auto         # auto (mps on the Mac, else cuda, else cpu) | mps | cpu | cuda
   imgsz: 640
   conf: 0.15
   iou: 0.5
