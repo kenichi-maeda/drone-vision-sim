@@ -1,5 +1,6 @@
 """Safely verify that the simulated Duckiedrone camera publishes usable frames."""
 
+import os
 from time import monotonic, time
 from pathlib import Path
 
@@ -10,7 +11,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
 
 
-CAMERA_TOPIC = "/birdie/camera_node/image/compressed"
+ROBOT_NAME = os.environ.get("VEHICLE_NAME", "birdie")
+CAMERA_TOPIC = f"/{ROBOT_NAME}/camera_node/image/compressed"
 FLIGHT_FRAME_DIR = Path("/tmp/duckiedrone_flight_frames")
 FLIGHT_FRAME_INTERVAL_S = 1.0
 MAX_FLIGHT_FRAMES = 40

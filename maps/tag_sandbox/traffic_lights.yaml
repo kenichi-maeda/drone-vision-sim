@@ -1,0 +1,4 @@
+version: 1.0
+# Not included from main.yaml. The TL21 prefab does not draw a light on this
+# grass map, so the camera view does not ask YOLO to name one.
+traffic_lights: {}

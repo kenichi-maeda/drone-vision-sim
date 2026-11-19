@@ -7,13 +7,25 @@ source ${COLCON_WS}/install/setup.bash --extend
 
 # Optional per-experiment target selection. Edit packages/drone_vision/target.env in the project
 # (bind-mounted into the workbench; YOLO_TARGET_CLASS_ID, YOLO_ALLOWED_CLASS_IDS) and restart the workbench.
-if [ -f /code/catkin_ws/src/drone-vision-sim/packages/drone_vision/target.env ]; then
-    source /code/catkin_ws/src/drone-vision-sim/packages/drone_vision/target.env
+MOUNTED_PACKAGE=/code/catkin_ws/src/drone-vision-sim/packages/drone_vision
+IMAGE_PACKAGE=/code/src/drone-vision-sim/packages/drone_vision
+if [ -f "${MOUNTED_PACKAGE}/target.env" ]; then
+    source "${MOUNTED_PACKAGE}/target.env"
+fi
+# The image copy is what Python imports. The workbench mount is newer when
+# the package was edited after the image was built, so copy it over at start.
+if [ -f "${MOUNTED_PACKAGE}/drone_vision/camera_view.py" ]; then
+    cp -a "${MOUNTED_PACKAGE}/." "${IMAGE_PACKAGE}/"
+    rm -rf "${IMAGE_PACKAGE}/drone_vision/__pycache__"
 fi
 
 # These nodes are deliberately perception-only: they subscribe to the camera
 # and publish no MAVROS topic or flight command.
 dt-set-module-healthy
+# Keep the detector off the cores the Matrix physics loop needs.
+export OMP_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+export OPENCV_FOR_THREADS_NUM=2
 dt-exec ros2 run drone_vision camera_probe
 dt-exec ros2 run drone_vision yolo_detector --ros-args \
     -p model_path:=/code/src/drone-vision-sim/assets/yolov8n.onnx \

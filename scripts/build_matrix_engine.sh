@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-base_image="duckietown/dt-duckiematrix:ente-arm64v8"
-backup_image="duckietown/dt-duckiematrix:ente-arm64v8-unpatched"
-patched_image="duckietown/dt-duckiematrix:ente-arm64v8-yolo-patched"
+case "$(uname -m)" in
+  x86_64) dt_arch="amd64" ;;
+  aarch64|arm64) dt_arch="arm64v8" ;;
+  *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;;
+esac
+base_image="duckietown/dt-duckiematrix:ente-${dt_arch}"
+backup_image="duckietown/dt-duckiematrix:ente-${dt_arch}-unpatched"
+patched_image="duckietown/dt-duckiematrix:ente-${dt_arch}-yolo-patched"
 
 if ! docker image inspect "${backup_image}" >/dev/null 2>&1; then
     docker image inspect "${base_image}" >/dev/null

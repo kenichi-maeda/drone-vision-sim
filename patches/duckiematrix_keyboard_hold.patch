@@ -1,0 +1,13 @@
+--- quadcopter_entity.py
++++ quadcopter_entity.py
+@@ -866,8 +866,8 @@
+                 CameraRelativeHeadingControllerState()
+             )
+         self._keyboard_command_engaged = keyboard_command_engaged
+-        if keyboard_command is not None or self._reset:
+-            self._keyboard_control_active = True
++        # An idle keyboard packet must not permanently bypass PX4.
++        self._keyboard_control_active = keyboard_command_engaged or self._reset
+ 
+     def _select_physics_control(
+         self,
