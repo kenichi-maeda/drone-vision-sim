@@ -20,12 +20,13 @@ frames:
       pitch: 0
       # Preserve the original vehicle heading; navigation must search visually.
       yaw: 1.57079632679
-  # The vehicle faces +Y. Yellow duckie close and right, red stop sign left.
-  # The 2026-11-10 poses are in the *_baseline_2026-11-10_*.yaml files.
+  # The vehicle faces +Y. The duckie is close and right of the nose so
+  # YOLOv8n can name it and the scan has to yaw. The stop sign is the red
+  # prop on the left. The blue duckiebot is farther ahead and reads as a truck.
   map_0/duckie_target:
     relative_to: ~
     pose:
-      x: 0.10
+      x: 0.16
       y: 0.38
       z: 0.0
       roll: 0.0
@@ -34,12 +35,21 @@ frames:
   map_0/sign_stop_front:
     relative_to: ~
     pose:
-      x: -0.48
-      y: 0.95
+      x: -0.42
+      y: 0.90
       z: 0.0
       roll: 0.0
       pitch: 0.0
       yaw: 2.77
+  map_0/duckiebot_front:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 1.15
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: -1.57079632679
   # Keep the landing marker off the front-camera test line; use it later for
   # the separate downward-camera landing experiment.
   map_0/groundtag_301:

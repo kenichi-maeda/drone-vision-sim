@@ -61,34 +61,44 @@ class SafeHover(Node):
             "pose_stale_timeout_seconds": 1.5,
             "handoff_to_offboard": True,
             "handoff_rise_m": 0.40,
-            "handoff_timeout_seconds": 4.0,
+            # The simulator acknowledges a mode change a few seconds late.
+            "handoff_timeout_seconds": 12.0,
             "object_search_enabled": True,
             # At 0.31 rad/s this covers just over one full 360-degree yaw
-            # sweep. Positive yaw turns the visible right-of-center sign toward
-            # the camera center in the current test map.
-            "object_search_seconds": 22.0,
+            # sweep. Negative yaw brings a right-of-center duckie toward the
+            # camera center in the current test map.
+            "object_search_seconds": 40.0,
             "object_search_initial_hold_seconds": 0.5,
-            "object_search_yaw_rate_rad_s": 0.31,
+            "object_search_yaw_rate_rad_s": -0.31,
             "object_search_detection_confidence": 0.10,
             "object_search_max_bbox_area": 0.18,
-            "object_search_confirmation_count": 3,
+            "object_search_confirmation_count": 2,
             "object_search_max_acquisition_error_x": 0.45,
-            "object_search_max_abs_error_y": 0.60,
+            # Ground props sit low in the frame once the drone is at hover height.
+            "object_search_max_abs_error_y": 0.80,
             "object_tracking_max_error_x_delta": 0.30,
             "object_tracking_max_error_y_delta": 0.50,
             "object_tracking_max_area_ratio": 4.0,
             "object_centering_enabled": True,
-            "object_centering_seconds": 6.0,
-            "object_centering_kp_rad": 0.60,
+            # The simulator yaws slowly, so centering needs a longer window
+            # and a larger yaw step before the box is inside the approach gate.
+            "object_centering_seconds": 25.0,
+            "object_centering_kp_rad": 1.50,
             "object_centering_deadband": 0.08,
-            "object_centering_step_limit_rad": 0.12,
+            "object_centering_step_limit_rad": 0.50,
             "object_centering_max_offset_rad": 1.20,
             "object_centering_loss_timeout_seconds": 1.5,
+            # One in-tolerance frame is not enough; the box has to stay
+            # centered before the drone starts moving toward it.
+            "object_centering_hold_seconds": 1.5,
             "object_approach_enabled": True,
             "object_approach_speed_m_s": 0.08,
             "object_approach_size_growth_ratio": 2.5,
             "object_approach_center_tolerance": 0.20,
             "object_approach_max_error_x": 0.45,
+            # A forward camera loses a ground object out the bottom of the
+            # frame once the drone is over it. That is the arrival cue.
+            "object_approach_arrival_error_y": 0.75,
             "object_approach_loss_timeout_seconds": 2.0,
             "object_approach_reacquire_seconds": 2.0,
             "object_approach_reacquire_max_error_x": 0.80,
@@ -155,6 +165,7 @@ class SafeHover(Node):
         self.started = self.climb_started = self.handoff_started = None
         self.prestream_started = self.airborne_started = self.search_started = None
         self.center_started = self.approach_started = self.landing_started = None
+        self.center_hold_since = None
         self.reacquire_started = None
         self.disarmed_at = None
         self.start_z = self.search_yaw = self.center_yaw = None
@@ -251,7 +262,10 @@ class SafeHover(Node):
         if not valid:
             self.detection_count = 0
             return
-        if now - self.last_detection_at > 0.5 or self.det_candidate_class_id != int(class_id):
+        # Inference in this simulator often arrives slower than 2 Hz.
+        # A shorter gap reset the confirmation count before it could reach
+        # the acquisition threshold, so the scan yawed past the duckie.
+        if now - self.last_detection_at > 1.5 or self.det_candidate_class_id != int(class_id):
             self.detection_count = 0
         self.det_candidate_class_id = int(class_id)
         self.detection_count += 1
@@ -285,11 +299,13 @@ class SafeHover(Node):
             return
         stale = float(self._p("pose_stale_timeout_seconds"))
         if now - self.pose_at > stale:
-            if self.started is None and self.phase == "idle":
-                self._log_once("Waiting for fresh MAVROS pose; not starting flight")
-            else:
-                self.get_logger().error("MAVROS pose stale; requesting AUTO.LAND")
-                self._land()
+            # Before the motors arm, a slow simulator frame should wait.
+            # Once the climb has started, the same 1.5 s limit still lands.
+            if self.climb_started is None:
+                self._log_once("Waiting for fresh MAVROS pose")
+                return
+            self.get_logger().error("MAVROS pose stale; requesting AUTO.LAND")
+            self._land()
             return
 
         if now - self.vision_at > 2.0:
@@ -477,7 +493,7 @@ class SafeHover(Node):
 
     def _confirmed(self, now: float) -> bool:
         return (self.det is not None and self.detection_count >= int(self._p("object_search_confirmation_count"))
-                and now - self.last_valid_detection_at <= 0.5
+                and now - self.last_valid_detection_at <= 1.5
                 and (self.target_class_id is not None
                      or abs(self.det[2]) <= float(self._p("object_search_max_abs_error_y")))
                 and self.det[0] >= float(self._p("object_search_detection_confidence"))
@@ -486,32 +502,52 @@ class SafeHover(Node):
     def _search(self, now: float) -> None:
         assert self.search_started is not None and self.search_yaw is not None
         elapsed = now - self.search_started
-        if self._confirmed(now) and abs(self.det[1]) <= float(self._p("object_search_max_acquisition_error_x")):
-            self.target_class_id = self.det[4]
-            self.target.pose.orientation = self.pose.pose.orientation
-            if abs(self.det[1]) <= float(self._p("object_approach_center_tolerance")):
-                self._begin_approach(now)
-            else:
-                self.center_started = now
-                self.center_yaw = yaw_of(self.pose.pose.orientation)
-                self.phase = "center"
-                self.get_logger().info(f"YOLO target acquired (error_x={self.det[1]:+.3f}); yaw-centering in place")
-            return
         initial_hold = float(self._p("object_search_initial_hold_seconds"))
         duration = float(self._p("object_search_seconds"))
         if elapsed > initial_hold + duration:
             self.get_logger().warning("Target not found during bounded in-place scan; landing")
             self._land()
             return
+        if self._confirmed(now) and abs(self.det[1]) <= float(self._p("object_search_max_acquisition_error_x")):
+            self.target_class_id = self.det[4]
+            self.target.pose.orientation = self.pose.pose.orientation
+            self.center_started = now
+            self.center_hold_since = None
+            self.center_yaw = yaw_of(self.pose.pose.orientation)
+            self.phase = "center"
+            self.get_logger().info(f"YOLO target acquired (error_x={self.det[1]:+.3f}); yaw-centering in place")
+            return
+        # A target already in frame but outside the acquisition gate is yawed
+        # toward center. The open-loop sweep is only for an empty view.
+        if self._confirmed(now):
+            if elapsed > initial_hold and self.last_valid_detection_at > self.last_control_detection_at:
+                self._steer(self.det[1], self.search_yaw)
+                self.last_control_detection_at = self.last_valid_detection_at
+            if now - self.last_log > 1.0:
+                self.get_logger().info(
+                    f"Search yaw toward target: error_x={self.det[1]:+.3f}, "
+                    f"yaw={yaw_of(self.pose.pose.orientation):+.2f}"
+                )
+                self.last_log = now
+            return
         if elapsed > initial_hold:
-            yaw = self.search_yaw + float(self._p("object_search_yaw_rate_rad_s")) * (elapsed - initial_hold)
-            set_yaw(self.target, yaw)
+            # Keep the yaw setpoint a small lead ahead of the measured yaw.
+            # Integrating the sweep from the start leaves a multi-radian error,
+            # and that error made the estimator drop out.
+            measured_yaw = yaw_of(self.pose.pose.orientation)
+            rate = float(self._p("object_search_yaw_rate_rad_s"))
+            lead = float(self._p("object_centering_step_limit_rad"))
+            set_yaw(self.target, measured_yaw + (lead if rate >= 0.0 else -lead))
         if now - self.last_log > 1.0:
-            self.get_logger().info(f"Searching: elapsed={elapsed:.1f}s, detections={self.detection_count}")
+            self.get_logger().info(
+                f"Searching: elapsed={elapsed:.1f}s, detections={self.detection_count}, "
+                f"yaw={yaw_of(self.pose.pose.orientation):+.2f}, "
+                f"target_yaw={yaw_of(self.target.pose.orientation):+.2f}"
+            )
             self.last_log = now
 
     def _steer(self, error: float, reference_yaw: float) -> float:
-        """Correct from measured yaw so repeated frames cannot wind up a turn."""
+        """Yaw so a positive image error (target on the right) decreases."""
         measured_yaw = yaw_of(self.pose.pose.orientation)
         delta = 0.0
         if abs(error) > float(self._p("object_centering_deadband")):
@@ -531,14 +567,21 @@ class SafeHover(Node):
             self.get_logger().error("Target lost during yaw centering; landing")
             self._land()
             return
-        if self._confirmed(now) and abs(self.det[1]) <= float(self._p("object_approach_center_tolerance")):
-            self._begin_approach(now)
-            return
+        inside = self._confirmed(now) and abs(self.det[1]) <= float(self._p("object_approach_center_tolerance"))
+        if inside:
+            if self.center_hold_since is None:
+                self.center_hold_since = now
+            elif now - self.center_hold_since >= float(self._p("object_centering_hold_seconds")):
+                self._begin_approach(now)
+                return
+        else:
+            self.center_hold_since = None
         if now - self.center_started > float(self._p("object_centering_seconds")):
             self.get_logger().warning("Could not center target within time limit; landing")
             self._land()
             return
-        if self._confirmed(now) and self.last_valid_detection_at > self.last_control_detection_at:
+        if (not inside and self._confirmed(now)
+                and self.last_valid_detection_at > self.last_control_detection_at):
             self._steer(self.det[1], self.center_yaw)
             self.last_control_detection_at = self.last_valid_detection_at
         if now - self.last_log > 1.0:
@@ -582,6 +625,14 @@ class SafeHover(Node):
             self._land()
             return
         if now - self.last_valid_detection_at > float(self._p("object_approach_loss_timeout_seconds")):
+            if (self.det is not None
+                    and abs(self.det[2]) >= float(self._p("object_approach_arrival_error_y"))
+                    and abs(self.det[1]) <= float(self._p("object_approach_max_error_x"))):
+                self.get_logger().info(
+                    "Target dropped out the bottom of the frame after a centered approach; landing"
+                )
+                self._land()
+                return
             if self.approach_reacquire_attempted:
                 self.get_logger().error("Target still lost after reacquisition attempt; landing")
                 self._land()
@@ -601,7 +652,14 @@ class SafeHover(Node):
         if not self._confirmed(now):
             return
         assert self.det is not None and self.initial_area is not None and self.stop_area is not None
-        _, error, _, area, _ = self.det
+        _, error, error_y, area, _ = self.det
+        if (abs(error_y) >= float(self._p("object_approach_arrival_error_y"))
+                and abs(error) <= float(self._p("object_approach_max_error_x"))):
+            self.get_logger().info(
+                f"Target is under the forward camera (error_y={error_y:+.3f}); landing on the object"
+            )
+            self._land()
+            return
         centered = abs(error) <= float(self._p("object_approach_center_tolerance"))
         if area >= self.stop_area:
             if centered:

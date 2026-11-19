@@ -1,5 +1,6 @@
 version: 1.0
 traffic_signs:
-  # Red octagon in front-left of the spawn camera. No AprilTag metadata.
+  # Red octagon left of the nose. No AprilTag metadata.
+  # Yield and parking signs render as bare poles on this map, so they are not used.
   map_0/sign_stop_front:
     type: sign_stop

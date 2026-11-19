@@ -10,3 +10,8 @@ vehicles:
     configuration: DD24
     id: ''
     color: ~
+  # Static extra robot in front of the drone. Not the attached vehicle.
+  map_0/duckiebot_front:
+    configuration: DB21M
+    id: ''
+    color: ~
