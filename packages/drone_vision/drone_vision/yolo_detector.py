@@ -10,17 +10,19 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray, Header, String
 
-from drone_vision.vision_lib import COLOR_BGR, color_inside, specified_for
+from drone_vision.vision_lib import COLOR_BGR, color_inside, resolve_specified, specified_for
 
 
 ROBOT_NAME = os.environ.get("VEHICLE_NAME", "birdie")
 CAMERA_TOPIC = f"/{ROBOT_NAME}/camera_node/image/compressed"
 ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
 OBJECTS_TOPIC = "/drone_vision/yolo_objects"
+FLIGHT_REQUEST_TOPIC = "/drone_vision/flight_request"
 MODEL_INPUT_SIZE = 640
 COCO_STOP_SIGN_CLASS = 11
 FLIGHT_MAX_AREA = 0.18
@@ -106,6 +108,7 @@ class YoloDetector(Node):
         self._annotated_pub = self.create_publisher(
             CompressedImage, ANNOTATED_TOPIC, QoSProfile(depth=1)
         )
+        self.create_subscription(String, FLIGHT_REQUEST_TOPIC, self._on_flight_request, 10)
         watched = (
             "any"
             if self._watched_class_ids is None
@@ -211,6 +214,21 @@ class YoloDetector(Node):
             return detections[:1]
         return detections
 
+    def _on_flight_request(self, message: String) -> None:
+        spec = resolve_specified(message.data)
+        if spec is None:
+            self.get_logger().error(f"Ignoring unknown flight target {message.data!r}")
+            return
+        self.set_parameters([
+            Parameter("target_class_id", Parameter.Type.INTEGER, int(spec["class_id"]))
+        ])
+        self._target_class_id = int(spec["class_id"])
+        self._target_description = spec["label"]
+        self.get_logger().info(
+            f"Flight detections now follow {spec['label']} "
+            f"({spec['name']}, {spec['color']})"
+        )
+
     def _publish_annotated(
         self,
         header: Header,
@@ -307,8 +325,10 @@ class YoloDetector(Node):
         flight_rows = [
             row for row in rows
             if row["width"] * row["height"] <= FLIGHT_MAX_AREA
+            and row["color_ok"]
             and (self._target_class_id == -1 or row["class_id"] == self._target_class_id)
         ]
+        flight_rows.sort(key=lambda row: row["confidence"], reverse=True)
         if not flight_rows:
             now = monotonic()
             if now - self._last_miss_log_at >= 3.0:

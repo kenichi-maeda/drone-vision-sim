@@ -2,7 +2,7 @@
 
 / is the front camera, in fisheye or with the fisheye removed.
 /drive moves the drone through the Matrix keyboard input.
-Neither view arms PX4 by itself.
+The camera page can also fly to one of the objects placed in the map.
 """
 
 from __future__ import annotations
@@ -23,13 +23,15 @@ from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray, String
 
 from drone_vision.drive_link import COMMAND_FIELDS, DriveLink, empty_command
-from drone_vision.vision_lib import rectify
+from drone_vision.vision_lib import SPECIFIED_OBJECTS, rectify, resolve_specified
 
 
 ANNOTATED_TOPIC = "/drone_vision/yolo_image/compressed"
 DETECTION_TOPIC = "/drone_vision/yolo_detection"
 OBJECTS_TOPIC = "/drone_vision/yolo_objects"
 PHASE_TOPIC = "/drone_vision/calibration_phase"
+FLIGHT_REQUEST_TOPIC = "/drone_vision/flight_request"
+FLIGHT_STATUS_TOPIC = "/drone_vision/flight_status"
 STALE_AFTER_S = 1.0
 BOUNDARY = "frame"
 DRIVE_URLS = [
@@ -77,10 +79,17 @@ PAGE = """<!doctype html>
       <tr><th>Phase</th><td id="phase">-</td></tr>
       <tr><th>Lens</th><td id="lens">fisheye</td></tr>
       <tr><th>Specified</th><td id="specified">-</td></tr>
+      <tr><th>Flight</th><td id="flight">-</td></tr>
     </table>
     <table id="objects">
       <tr><th>Object</th><th>Class</th><th>Color</th><th>Match</th></tr>
     </table>
+    <h2>Fly to an object</h2>
+    <p>Available: %%CHOICES%%</p>
+    <input id="target" list="available" placeholder="duckie or stop sign" autocomplete="off">
+    <datalist id="available">%%OPTIONS%%</datalist>
+    <button id="fly" type="button">Fly to it</button>
+    <p id="flight-msg"></p>
   </div>
 </main>
 <script>
@@ -105,6 +114,7 @@ PAGE = """<!doctype html>
       const status = await (await fetch("/status")).json();
       const objects = status.objects || [];
       text("phase", status.phase || "idle");
+      text("flight", status.flight_status || "-");
       const matched = new Set(objects.filter((item) => item.color_ok).map((item) => item.name));
       const ready = matched.has("sports_ball") && matched.has("stop_sign");
       text("specified", ready ? "duckie and stop sign match" : "waiting for the duckie and the stop sign");
@@ -123,6 +133,28 @@ PAGE = """<!doctype html>
     setTimeout(poll, 250);
   }
   poll();
+  async function flyTo(name) {
+    const objectName = (name || document.getElementById("target").value || "").trim();
+    const msg = document.getElementById("flight-msg");
+    if (!objectName) {
+      msg.textContent = "Enter duckie or stop sign.";
+      return;
+    }
+    try {
+      const response = await fetch("/flight", {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({object: objectName})});
+      const body = await response.json();
+      msg.textContent = body.message || body.error || "sent";
+    } catch (error) {
+      msg.textContent = "no connection";
+    }
+  }
+  document.getElementById("fly").onclick = () => flyTo();
+  for (const button of document.querySelectorAll("[data-fly]")) {
+    button.onclick = () => {
+      document.getElementById("target").value = button.dataset.fly;
+      flyTo(button.dataset.fly);
+    };
+  }
   const cam = document.getElementById("cam");
   const showNext = () => { cam.src = "/frame.jpg?lens=" + lens + "&t=" + Date.now(); };
   cam.onload = () => setTimeout(showNext, 30);
@@ -132,6 +164,23 @@ PAGE = """<!doctype html>
 </body>
 </html>
 """
+
+
+def _flight_markup() -> tuple[str, str]:
+    options = []
+    choices = []
+    for spec in SPECIFIED_OBJECTS.values():
+        label = spec["label"]
+        pretty = spec["name"].replace("_", " ")
+        options.append(f'<option value="{label}"></option>')
+        choices.append(
+            f'<button type="button" data-fly="{label}">{label}</button> ({spec["color"]} {pretty})'
+        )
+    return "".join(options), " ".join(choices)
+
+
+_OPTIONS, _CHOICES = _flight_markup()
+PAGE = PAGE.replace("%%OPTIONS%%", _OPTIONS).replace("%%CHOICES%%", _CHOICES)
 
 DRIVE_PAGE = """<!doctype html>
 <html lang="en">
@@ -288,18 +337,22 @@ class CameraView(Node):
         self._detection_at = 0.0
         self._objects: list[dict] = []
         self._objects_at = 0.0
+        self._flight_status = ""
         self._drive = DriveRelay()
+        self._flight_pub = self.create_publisher(String, FLIGHT_REQUEST_TOPIC, 10)
 
         self.create_subscription(CompressedImage, ANNOTATED_TOPIC, self._on_frame, QoSProfile(depth=1))
         self.create_subscription(Float32MultiArray, DETECTION_TOPIC, self._on_detection, 10)
         self.create_subscription(String, OBJECTS_TOPIC, self._on_objects, 10)
         self.create_subscription(String, PHASE_TOPIC, self._on_phase, 10)
+        self.create_subscription(String, FLIGHT_STATUS_TOPIC, self._on_flight_status, 10)
 
         self._server = ThreadingHTTPServer(("0.0.0.0", port), self._make_handler())
         self._server.daemon_threads = True
         threading.Thread(target=self._server.serve_forever, daemon=True).start()
         self.get_logger().info(
-            f"Camera view on port {port}: / is the fisheye camera, /drive moves the drone."
+            f"Camera view on port {port}: / is the fisheye camera, /drive moves the drone, "
+            "and the camera page can fly to a duckie or a stop sign."
         )
 
     def _on_frame(self, message: CompressedImage) -> None:
@@ -325,6 +378,35 @@ class CameraView(Node):
     def _on_phase(self, message: String) -> None:
         self._phase = message.data
 
+    def _on_flight_status(self, message: String) -> None:
+        self._flight_status = message.data
+
+    def _request_flight(self, handler: BaseHTTPRequestHandler, payload: dict) -> None:
+        available = [spec["label"] for spec in SPECIFIED_OBJECTS.values()]
+        spec = resolve_specified(str(payload.get("object", "")))
+        if spec is None:
+            body = json.dumps({
+                "ok": False,
+                "error": "Available objects are " + " and ".join(available) + ".",
+                "available": available,
+            }).encode()
+            handler.send_response(400)
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", str(len(body)))
+            handler.send_header("Cache-Control", "no-store")
+            handler.end_headers()
+            handler.wfile.write(body)
+            return
+        message = String()
+        message.data = spec["label"]
+        self._flight_pub.publish(message)
+        handler._send("application/json", json.dumps({
+            "ok": True,
+            "message": f"Request sent: flying to {spec['label']}.",
+            "class_id": spec["class_id"],
+            "available": available,
+        }).encode())
+
     def _status(self) -> dict:
         detection = None
         data = self._detection
@@ -344,6 +426,8 @@ class CameraView(Node):
             "objects": objects,
             "drive_connected": self._drive.connected,
             "drive_error": self._drive.error,
+            "flight_status": self._flight_status,
+            "available": [spec["label"] for spec in SPECIFIED_OBJECTS.values()],
         }
 
     def _frame_bytes(self, lens: str) -> bytes | None:
@@ -407,9 +491,6 @@ class CameraView(Node):
 
             def do_POST(self) -> None:
                 path = urlparse(self.path).path
-                if path != "/drive/command":
-                    self.send_error(404)
-                    return
                 length = int(self.headers.get("Content-Length", "0"))
                 raw = self.rfile.read(length) if length else b"{}"
                 try:
@@ -419,6 +500,12 @@ class CameraView(Node):
                     return
                 if not isinstance(payload, dict):
                     self.send_error(400, "expected an object")
+                    return
+                if path == "/flight":
+                    view._request_flight(self, payload)
+                    return
+                if path != "/drive/command":
+                    self.send_error(404)
                     return
                 view._drive.set_command(payload)
                 self._send("application/json", json.dumps(view._status()).encode())

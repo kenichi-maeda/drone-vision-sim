@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "packages" / "drone_vision"))
 
 from drone_vision.drive_link import encode_input_frame, encode_keyboard
-from drone_vision.vision_lib import color_inside, rectify, rectify_maps
+from drone_vision.vision_lib import color_inside, rectify, rectify_maps, resolve_specified
 
 
 def paint(color_bgr, width=80, height=60) -> np.ndarray:
@@ -22,6 +22,15 @@ def paint(color_bgr, width=80, height=60) -> np.ndarray:
 
 
 def main() -> None:
+    duckie = resolve_specified("duckie")
+    stop = resolve_specified("Stop Sign")
+    assert duckie is not None and duckie["class_id"] == 32 and duckie["color"] == "yellow"
+    assert stop is not None and stop["class_id"] == 11 and stop["color"] == "red"
+    assert resolve_specified("sports ball")["class_id"] == 32
+    assert resolve_specified("11")["label"] == "stop sign"
+    assert resolve_specified("truck") is None
+    assert resolve_specified("  ") is None
+
     red = color_inside(paint((40, 40, 220)), 0, 0, 80, 60)
     yellow = color_inside(paint((0, 220, 220)), 0, 0, 80, 60)
     blue = color_inside(paint((220, 80, 40)), 0, 0, 80, 60)

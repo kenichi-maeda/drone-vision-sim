@@ -97,6 +97,22 @@ def specified_for(class_id: int) -> dict | None:
     return SPECIFIED_OBJECTS.get(int(class_id))
 
 
+def resolve_specified(text: str) -> dict | None:
+    """Match a typed name to one of the objects this map can fly to."""
+    key = " ".join(str(text).strip().lower().replace("_", " ").split())
+    if not key:
+        return None
+    for class_id, spec in SPECIFIED_OBJECTS.items():
+        names = {
+            spec["label"].lower(),
+            spec["name"].lower().replace("_", " "),
+            str(class_id),
+        }
+        if key in names:
+            return {"class_id": int(class_id), **spec}
+    return None
+
+
 def _scaled_camera(width: int, height: int) -> np.ndarray:
     camera = FISHEYE_K.copy()
     camera[0, 0] *= width / CALIB_WIDTH

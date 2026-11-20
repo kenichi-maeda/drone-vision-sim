@@ -8,16 +8,19 @@ bounded speed and lands when the centered box reaches a relative-size cue.
 
 from __future__ import annotations
 
-from math import atan2, cos, isfinite, sin
+from math import asin, atan2, cos, isfinite, sin
 from time import monotonic, time
 
 import rclpy
 from geometry_msgs.msg import PoseStamped
 from mavros_msgs.msg import EstimatorStatus, ExtendedState, State
-from mavros_msgs.srv import CommandBool, SetMode
+from mavros_msgs.srv import CommandBool, CommandLong, SetMode
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Float32MultiArray, Header, String
+
+from drone_vision.vision_lib import resolve_specified
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -33,6 +36,10 @@ def centering_factor(error: float, tolerance: float, max_error: float) -> float:
 def yaw_of(q) -> float:
     return atan2(2.0 * (q.w * q.z + q.x * q.y),
                  1.0 - 2.0 * (q.y * q.y + q.z * q.z))
+
+
+def pitch_of(q) -> float:
+    return asin(clamp(2.0 * (q.w * q.y - q.z * q.x), -1.0, 1.0))
 
 
 def set_yaw(pose: PoseStamped, yaw: float) -> None:
@@ -52,11 +59,11 @@ class SafeHover(Node):
             "flight_mode": "AUTO.TAKEOFF",
             "height_m": 0.60,
             "hover_seconds": 2.0,
-            "climb_timeout_seconds": 30.0,
+            "climb_timeout_seconds": 150.0,
             "warmup_seconds": 2.0,
-            # Allow the slow AUTO.TAKEOFF / OFFBOARD startup observed in
-            # Matrix before the bounded search and approach phase budgets.
-            "hard_timeout_seconds": 70.0,
+            # Covers the slow ground spool before the search, centering, and
+            # approach budgets. A shorter cap expired during the search.
+            "hard_timeout_seconds": 170.0,
             "landing_timeout_seconds": 40.0,
             "pose_stale_timeout_seconds": 1.5,
             "handoff_to_offboard": True,
@@ -64,17 +71,22 @@ class SafeHover(Node):
             # The simulator acknowledges a mode change a few seconds late.
             "handoff_timeout_seconds": 12.0,
             "object_search_enabled": True,
-            # At 0.31 rad/s this covers just over one full 360-degree yaw
-            # sweep. Negative yaw brings a right-of-center duckie toward the
-            # camera center in the current test map.
+            # Used only when the requested object was never seen. A negative
+            # rate turns toward a target on the right. A sighting, including
+            # one from before takeoff, replaces this with a yaw toward that
+            # image error so a stop sign on the left is not swept away.
             "object_search_seconds": 40.0,
             "object_search_initial_hold_seconds": 0.5,
             "object_search_yaw_rate_rad_s": -0.31,
-            "object_search_detection_confidence": 0.10,
+            "object_search_detection_confidence": 0.08,
             "object_search_max_bbox_area": 0.18,
             "object_search_confirmation_count": 2,
-            "object_search_max_acquisition_error_x": 0.45,
-            # Ground props sit low in the frame once the drone is at hover height.
+            # The stop sign is still a reliable detection well off center.
+            # Acquiring it there avoids a blind yaw that carries it out of frame.
+            "object_search_max_acquisition_error_x": 0.80,
+            # Unguided search ignores a box this far above or below center.
+            # A requested object skips this gate; the stop sign is near the
+            # top of the forward camera even when it is horizontally centered.
             "object_search_max_abs_error_y": 0.80,
             "object_tracking_max_error_x_delta": 0.30,
             "object_tracking_max_error_y_delta": 0.50,
@@ -85,9 +97,11 @@ class SafeHover(Node):
             "object_centering_seconds": 25.0,
             "object_centering_kp_rad": 1.50,
             "object_centering_deadband": 0.08,
-            "object_centering_step_limit_rad": 0.50,
+            # A half-radian step yaws a narrow sign out of the fisheye frame
+            # before the next detection can correct it.
+            "object_centering_step_limit_rad": 0.20,
             "object_centering_max_offset_rad": 1.20,
-            "object_centering_loss_timeout_seconds": 1.5,
+            "object_centering_loss_timeout_seconds": 4.0,
             # One in-tolerance frame is not enough; the box has to stay
             # centered before the drone starts moving toward it.
             "object_centering_hold_seconds": 1.5,
@@ -99,8 +113,11 @@ class SafeHover(Node):
             # A forward camera loses a ground object out the bottom of the
             # frame once the drone is over it. That is the arrival cue.
             "object_approach_arrival_error_y": 0.75,
-            "object_approach_loss_timeout_seconds": 2.0,
-            "object_approach_reacquire_seconds": 2.0,
+            # The stop sign flickers below the detector threshold for a few
+            # seconds. These waits hold position instead of treating that gap
+            # as a lost target. They do not command forward motion.
+            "object_approach_loss_timeout_seconds": 5.0,
+            "object_approach_reacquire_seconds": 8.0,
             "object_approach_reacquire_max_error_x": 0.80,
             "object_approach_timeout_seconds": 30.0,
         }
@@ -154,6 +171,8 @@ class SafeHover(Node):
             10,
         )
         self.create_subscription(Header, "/drone_vision/yolo_frame", self._vision_cb, 10)
+        self.create_subscription(String, "/drone_vision/flight_request", self._flight_request_cb, 10)
+        self.flight_status_pub = self.create_publisher(String, "/drone_vision/flight_status", 10)
         self.setpoint_pub = self.create_publisher(
             PoseStamped,
             "/mavros/setpoint_position/local",
@@ -161,8 +180,11 @@ class SafeHover(Node):
         )
         self.mode_client = self.create_client(SetMode, "/mavros/set_mode")
         self.arm_client = self.create_client(CommandBool, "/mavros/cmd/arming")
+        self.command_client = self.create_client(CommandLong, "/mavros/cmd/command")
+        self.pose_stream_requested = False
 
         self.started = self.climb_started = self.handoff_started = None
+        self.last_climb_tick = 0.0
         self.prestream_started = self.airborne_started = self.search_started = None
         self.center_started = self.approach_started = self.landing_started = None
         self.center_hold_since = None
@@ -179,8 +201,19 @@ class SafeHover(Node):
         self.last_control_detection_at = 0.0
         self.detection_count = 0
         self.target_class_id: int | None = None
+        self.requested_class_id: int | None = None
+        self.search_hint_error: float | None = None
+        self.hint_applied_error: float | None = None
+        self.hint_nudges = 0
+        self.hint_nudge_at = 0.0
+        self.flight_label = ""
+        self._pending_flight = ""
         self.det_candidate_class_id: int | None = None
         self.det = None  # confidence, error_x, error_y, normalized box area, class_id
+        self.ground_error_y = None
+        self.ground_area = None
+        self.body_rose = False
+        self.pose_gap_retry_at = 0.0
         self.found_at = None
         self.arm_requested = False
         self.land_timeout_logged = False
@@ -241,6 +274,8 @@ class SafeHover(Node):
         if class_id < 0 or class_id != int(class_id):
             self.detection_count = 0
             return
+        if self.requested_class_id is not None and int(class_id) != self.requested_class_id:
+            return
         area = width * height
         # Once a target is locked, follow its continuous YOLO box even if the
         # classifier changes labels as viewpoint/scale changes. Reject jumps
@@ -271,6 +306,94 @@ class SafeHover(Node):
         self.detection_count += 1
         self.last_detection_at = self.last_valid_detection_at = now
         self.det = (confidence, ex, ey, area, int(class_id))
+        self.search_hint_error = ex
+
+    def _flight_request_cb(self, message: String) -> None:
+        self._pending_flight = message.data.strip()
+
+    def _say_flight(self, text: str) -> None:
+        status = String()
+        status.data = text
+        self.flight_status_pub.publish(status)
+        self.get_logger().info(text)
+
+    def _clear_mission(self) -> None:
+        self.started = self.climb_started = self.handoff_started = None
+        self.last_climb_tick = 0.0
+        self.prestream_started = self.airborne_started = self.search_started = None
+        self.center_started = self.approach_started = self.landing_started = None
+        self.center_hold_since = None
+        self.reacquire_started = None
+        self.disarmed_at = None
+        self.start_z = self.search_yaw = self.center_yaw = None
+        self.approach_start_yaw = self.approach_yaw = None
+        self.reacquire_yaw = None
+        self.approach_reacquire_attempted = False
+        self.initial_area = self.stop_area = None
+        self.approach_distance = 0.0
+        self.last_request = self.last_log = self.last_approach_tick = 0.0
+        self.last_detection_at = self.last_valid_detection_at = 0.0
+        self.last_control_detection_at = 0.0
+        self.detection_count = 0
+        self.target_class_id = None
+        self.det_candidate_class_id = None
+        self.det = None
+        self.ground_error_y = None
+        self.ground_area = None
+        self.body_rose = False
+        self.pose_gap_retry_at = 0.0
+        self.search_hint_error = None
+        self.hint_applied_error = None
+        self.hint_nudges = 0
+        self.hint_nudge_at = 0.0
+        self.pose_stream_requested = False
+        self.found_at = None
+        self.arm_requested = False
+        self.land_timeout_logged = False
+        self.wait_message = None
+
+    def _apply_flight_request(self) -> None:
+        label = self._pending_flight
+        if not label:
+            return
+        self._pending_flight = ""
+        spec = resolve_specified(label)
+        if spec is None:
+            self._say_flight("Unknown object. Choose duckie or stop sign.")
+            return
+        if self.state is not None and self.state.armed:
+            self._say_flight(f"Cannot fly to {spec['label']} while the drone is armed.")
+            return
+        if self.phase not in ("idle", "done"):
+            self._say_flight(f"Cannot fly to {spec['label']} until the current flight finishes.")
+            return
+        if (
+            self.ext is not None
+            and monotonic() - self.ext_at < 2.0
+            and self.ext.landed_state != ExtendedState.LANDED_STATE_ON_GROUND
+        ):
+            self._say_flight(f"Cannot fly to {spec['label']} until the drone is on the ground.")
+            return
+        self.requested_class_id = int(spec["class_id"])
+        self.flight_label = spec["label"]
+        self._clear_mission()
+        self.phase = "idle"
+        self.set_parameters([Parameter("enabled", Parameter.Type.BOOL, True)])
+        self._say_flight(f"Flying to {spec['label']}")
+
+    def _request_pose_stream(self) -> None:
+        # A fresh PX4 onboard link does not publish local position until asked.
+        # Without it the takeoff pose goes stale and the flight lands immediately.
+        if self.pose_stream_requested or not self.command_client.service_is_ready():
+            return
+        for message_id in (32, 30):
+            request = CommandLong.Request()
+            request.command = 511
+            request.param1 = float(message_id)
+            request.param2 = 50000.0
+            self.command_client.call_async(request)
+        self.pose_stream_requested = True
+        self.get_logger().info("Requested 20 Hz local position and attitude")
 
     def _p(self, key: str):
         return self.get_parameter(key).value
@@ -282,9 +405,12 @@ class SafeHover(Node):
 
     def _tick(self) -> None:
         now = monotonic()
+        self._apply_flight_request()
         phase_msg = String()
         phase_msg.data = self.phase
         self.flight_phase_pub.publish(phase_msg)
+        if bool(self._p("enabled")) and self.phase not in ("done", "landing"):
+            self._request_pose_stream()
         if not bool(self._p("enabled")):
             if self.phase not in ("idle", "done"):
                 self._land()
@@ -299,10 +425,25 @@ class SafeHover(Node):
             return
         stale = float(self._p("pose_stale_timeout_seconds"))
         if now - self.pose_at > stale:
-            # Before the motors arm, a slow simulator frame should wait.
-            # Once the climb has started, the same 1.5 s limit still lands.
-            if self.climb_started is None:
+            # The same 1.5 s limit still lands once the drone has actually climbed.
+            # Before that, a slow simulator frame waits instead of aborting takeoff.
+            risen = (
+                self.start_z is not None
+                and self.pose is not None
+                and self.pose.pose.position.z - float(self.start_z) >= 0.15
+            )
+            if not risen:
                 self._log_once("Waiting for fresh MAVROS pose")
+                return
+            # One extra request at the takeoff handoff. A single dropped
+            # position sample there was landing a climb the camera had confirmed.
+            if self.pose_gap_retry_at == 0.0 and self.phase in ("prestream", "handoff", "search"):
+                self.pose_gap_retry_at = now
+                self.pose_stream_requested = False
+                self._request_pose_stream()
+                self.get_logger().warning("Pose gap after handoff; requesting the position stream again")
+                return
+            if 0.0 < self.pose_gap_retry_at and now - self.pose_gap_retry_at < 2.0:
                 return
             self.get_logger().error("MAVROS pose stale; requesting AUTO.LAND")
             self._land()
@@ -333,11 +474,11 @@ class SafeHover(Node):
             self.target = PoseStamped()
             self.target.header.frame_id = self.pose.header.frame_id or "map"
             self.target.pose = self.pose.pose
-            self.target.pose.position.z = self.start_z + float(self._p("height_m"))
+            self.target.pose.position.z = self.start_z + float(self._p("handoff_rise_m"))
             self.phase = "warmup"
             self.get_logger().info(
                 f"Mission enabled from current pose z={self.start_z:.2f} m; "
-                f"handoff target z={self.target.pose.position.z:.2f} m"
+                f"takeoff handoff at +{float(self._p('handoff_rise_m')):.2f} m"
             )
 
         assert self.started is not None and self.target is not None
@@ -352,9 +493,9 @@ class SafeHover(Node):
             self.get_logger().error("Mission watchdog expired; landing")
             self._land()
             return
-        # AUTO.TAKEOFF owns the aircraft until the handoff point. Then stream
-        # local setpoints continuously before requesting OFFBOARD.
-        if self.prestream_started is not None or self.phase in ("search", "center", "approach", "reacquire"):
+        # AUTO.TAKEOFF owns the climb. Stream setpoints only once that climb
+        # has reached the handoff height.
+        if self.phase in ("prestream", "handoff", "search", "center", "approach", "reacquire"):
             self.target.header.stamp = self.get_clock().now().to_msg()
             self.setpoint_pub.publish(self.target)
 
@@ -406,7 +547,7 @@ class SafeHover(Node):
         self.get_logger().info(f"Requesting {mode}")
 
     def _takeoff(self, now: float) -> None:
-        assert self.state is not None and self.started is not None
+        assert self.state is not None and self.started is not None and self.target is not None
         ext_fresh = self.ext is not None and now - self.ext_at < 2.0
         if not ext_fresh:
             self._log_once("Waiting for fresh /mavros/extended_state before takeoff")
@@ -419,10 +560,10 @@ class SafeHover(Node):
             self.get_logger().error("Already armed before test; refusing to take control")
             self.phase = "done"
             return
-        if self.state.mode != "AUTO.TAKEOFF":
-            self._call_mode(now, "AUTO.TAKEOFF")
-            return
         if not self.state.armed:
+            if self.state.mode != "AUTO.TAKEOFF":
+                self._call_mode(now, "AUTO.TAKEOFF")
+                return
             if now - self.last_request >= 1.0 and self.arm_client.service_is_ready():
                 req = CommandBool.Request()
                 req.value = True
@@ -437,22 +578,63 @@ class SafeHover(Node):
             self.get_logger().info("AUTO.TAKEOFF armed; waiting for airborne rise")
         rise = self.pose.pose.position.z - float(self.start_z)
         landed_state = self.ext.landed_state if now - self.ext_at < 2.0 else -1
-        if rise >= float(self._p("handoff_rise_m")) and landed_state in (
+        airborne = landed_state in (
             ExtendedState.LANDED_STATE_TAKEOFF, ExtendedState.LANDED_STATE_IN_AIR
+        )
+        # The local-position climb can walk while the body is still on the
+        # ground. Hand off only after the target moves down or grows in the image.
+        fresh_det = self.det is not None and now - self.last_valid_detection_at <= 1.5
+        if fresh_det and self.ground_error_y is None:
+            self.ground_error_y = self.det[2]
+            self.ground_area = self.det[3]
+        if fresh_det and self.ground_area not in (None, 0.0) and not self.body_rose:
+            # A real climb moves the sign down the image or makes it larger.
+            # A 0.12 error flicker on the ground does neither.
+            grew = self.det[3] >= self.ground_area * 1.5
+            # Require some estimator rise so a ground-level flicker cannot
+            # hand off, and accept the smaller image shift seen on a real climb.
+            moved_down = rise >= 0.30 and self.det[2] - self.ground_error_y >= 0.12
+            if grew or moved_down:
+                self.body_rose = True
+                self.get_logger().info(
+                    f"Camera confirms climb: error_y {self.ground_error_y:+.2f} -> {self.det[2]:+.2f}, "
+                    f"area {self.ground_area:.4f} -> {self.det[3]:.4f}"
+                )
+        if (
+            self.ground_error_y is not None
+            and not self.body_rose
+            and self.last_valid_detection_at > 0.0
+            and now - self.last_valid_detection_at > 10.0
+            and rise >= 0.40
         ):
+            self.get_logger().error("Target left the camera during takeoff; landing")
+            self._land()
+            return
+        if self.body_rose and (airborne or self.state.mode != "AUTO.TAKEOFF"):
             if self.prestream_started is None:
                 self.target.pose.position.x = self.pose.pose.position.x
                 self.target.pose.position.y = self.pose.pose.position.y
                 self.target.pose.orientation = self.pose.pose.orientation
+                self.target.pose.position.z = self.pose.pose.position.z
                 self.prestream_started = now
                 self.phase = "prestream"
-                self.get_logger().info(f"Takeoff rise {rise:.2f} m; streaming OFFBOARD setpoints")
+                self.get_logger().info(
+                    f"Takeoff rise {rise:.2f} m (camera confirmed); streaming OFFBOARD setpoints"
+                )
+            return
+        if self.state.mode != "AUTO.TAKEOFF":
+            self._call_mode(now, "AUTO.TAKEOFF")
             return
         if self.climb_started is not None and now - self.climb_started > float(self._p("climb_timeout_seconds")):
             self.get_logger().error(f"Takeoff failed to rise {float(self._p('handoff_rise_m')):.2f} m before deadline; landing")
             self._land()
         elif now - self.last_log > 1.0:
-            self.get_logger().info(f"AUTO.TAKEOFF rise={rise:+.2f} m, landed_state={landed_state}; waiting for handoff height")
+            seen_y = f"{self.det[2]:+.2f}" if fresh_det else "none"
+            seen_area = f"{self.det[3]:.4f}" if fresh_det else "none"
+            self.get_logger().info(
+                f"AUTO.TAKEOFF rise={rise:+.2f} m, pitch={pitch_of(self.pose.pose.orientation):+.2f} rad, "
+                f"landed_state={landed_state}, error_y={seen_y}, area={seen_area}; waiting for the camera to show a climb"
+            )
             self.last_log = now
 
     def _handoff(self, now: float) -> None:
@@ -471,15 +653,28 @@ class SafeHover(Node):
             self.target.pose.position.y = self.pose.pose.position.y
             self.target.pose.position.z = self.pose.pose.position.z
             self.target.pose.orientation = self.pose.pose.orientation
-            # Never accept a detection acquired while grounded/taking off as
-            # the airborne search lock; require fresh post-handoff frames.
-            self.det = None
-            self.target_class_id = None
-            self.det_candidate_class_id = None
-            self.detection_count = 0
-            self.last_detection_at = 0.0
-            self.last_valid_detection_at = 0.0
-            self.last_control_detection_at = 0.0
+            # The detection that proved the climb is the lock. A slow frame
+            # must not wipe it and force a blind nudge.
+            if (
+                self.body_rose
+                and self.det is not None
+                and now - self.last_valid_detection_at <= 1.5
+                and self.detection_count < int(self._p("object_search_confirmation_count"))
+            ):
+                self.detection_count = int(self._p("object_search_confirmation_count"))
+            fresh = (
+                self.det is not None
+                and now - self.last_valid_detection_at <= 1.5
+                and self.detection_count >= int(self._p("object_search_confirmation_count"))
+            )
+            if not fresh:
+                self.det = None
+                self.target_class_id = None
+                self.det_candidate_class_id = None
+                self.detection_count = 0
+                self.last_detection_at = 0.0
+                self.last_valid_detection_at = 0.0
+                self.last_control_detection_at = 0.0
             self.phase = "search"
             self.get_logger().info("OFFBOARD confirmed; beginning in-place target search")
             return
@@ -495,6 +690,7 @@ class SafeHover(Node):
         return (self.det is not None and self.detection_count >= int(self._p("object_search_confirmation_count"))
                 and now - self.last_valid_detection_at <= 1.5
                 and (self.target_class_id is not None
+                     or self.requested_class_id is not None
                      or abs(self.det[2]) <= float(self._p("object_search_max_abs_error_y")))
                 and self.det[0] >= float(self._p("object_search_detection_confidence"))
                 and (self.target_class_id is None or self.det[4] == self.target_class_id))
@@ -531,16 +727,30 @@ class SafeHover(Node):
                 self.last_log = now
             return
         if elapsed > initial_hold:
-            # Keep the yaw setpoint a small lead ahead of the measured yaw.
-            # Integrating the sweep from the start leaves a multi-radian error,
-            # and that error made the estimator drop out.
-            measured_yaw = yaw_of(self.pose.pose.orientation)
-            rate = float(self._p("object_search_yaw_rate_rad_s"))
-            lead = float(self._p("object_centering_step_limit_rad"))
-            set_yaw(self.target, measured_yaw + (lead if rate >= 0.0 else -lead))
+            if self.search_hint_error is not None:
+                # One capped step toward the last sighting. A second step
+                # stacked on the first and yawed past the sign.
+                if self.hint_nudges == 0:
+                    self._steer(self.search_hint_error, self.search_yaw)
+                    self.hint_applied_error = self.search_hint_error
+                    self.hint_nudges += 1
+                    self.hint_nudge_at = now
+                    self.get_logger().info(
+                        f"Search nudge {self.hint_nudges} toward hint_error_x={self.search_hint_error:+.2f}"
+                    )
+            else:
+                # Keep the yaw setpoint a small lead ahead of the measured yaw.
+                # Integrating the sweep from the start leaves a multi-radian error,
+                # and that error made the estimator drop out.
+                measured_yaw = yaw_of(self.pose.pose.orientation)
+                rate = float(self._p("object_search_yaw_rate_rad_s"))
+                lead = float(self._p("object_centering_step_limit_rad"))
+                set_yaw(self.target, measured_yaw + (lead if rate >= 0.0 else -lead))
         if now - self.last_log > 1.0:
+            hint = "none" if self.search_hint_error is None else f"{self.search_hint_error:+.2f}"
             self.get_logger().info(
                 f"Searching: elapsed={elapsed:.1f}s, detections={self.detection_count}, "
+                f"hint_error_x={hint}, "
                 f"yaw={yaw_of(self.pose.pose.orientation):+.2f}, "
                 f"target_yaw={yaw_of(self.target.pose.orientation):+.2f}"
             )
@@ -626,7 +836,7 @@ class SafeHover(Node):
             return
         if now - self.last_valid_detection_at > float(self._p("object_approach_loss_timeout_seconds")):
             if (self.det is not None
-                    and abs(self.det[2]) >= float(self._p("object_approach_arrival_error_y"))
+                    and self.det[2] >= float(self._p("object_approach_arrival_error_y"))
                     and abs(self.det[1]) <= float(self._p("object_approach_max_error_x"))):
                 self.get_logger().info(
                     "Target dropped out the bottom of the frame after a centered approach; landing"
@@ -640,6 +850,7 @@ class SafeHover(Node):
             self.approach_reacquire_attempted = True
             self.reacquire_started = now
             self.reacquire_yaw = yaw_of(self.pose.pose.orientation)
+            self.hint_applied_error = None
             # Freeze translation at the measured pose before scanning, so
             # target loss can never cause blind forward motion.
             self.target.pose.position = self.pose.pose.position
@@ -653,7 +864,11 @@ class SafeHover(Node):
             return
         assert self.det is not None and self.initial_area is not None and self.stop_area is not None
         _, error, error_y, area, _ = self.det
-        if (abs(error_y) >= float(self._p("object_approach_arrival_error_y"))
+        # Positive error_y means the object has dropped into the lower half
+        # of the forward camera, which is the cue that the drone has reached
+        # a ground object. A tall sign stays in the upper half while the
+        # drone is still approaching it.
+        if (error_y >= float(self._p("object_approach_arrival_error_y"))
                 and abs(error) <= float(self._p("object_approach_max_error_x"))):
             self.get_logger().info(
                 f"Target is under the forward camera (error_y={error_y:+.3f}); landing on the object"
@@ -661,9 +876,15 @@ class SafeHover(Node):
             self._land()
             return
         centered = abs(error) <= float(self._p("object_approach_center_tolerance"))
-        if area >= self.stop_area:
+        # A 2.5x growth of the tiny ground sliver is still a distant sign.
+        # Keep closing until the box is actually large, or it drops under the camera.
+        arrival_area = max(self.stop_area, 0.02)
+        if area >= arrival_area:
             if centered:
-                self.get_logger().info(f"Reached visual-size goal ({area / self.initial_area:.2f}x); landing")
+                self.get_logger().info(
+                    f"Reached visual-size goal ({area / self.initial_area:.2f}x, area={area:.4f}, "
+                    f"error_y={error_y:+.2f}); landing"
+                )
                 self._land()
             return  # Never advance further while waiting for a stable cue.
 
@@ -678,7 +899,7 @@ class SafeHover(Node):
         )
         if alignment == 0.0:
             return
-        fraction = clamp(area / self.stop_area, 0.0, 1.0)
+        fraction = clamp(area / arrival_area, 0.0, 1.0)
         speed = (float(self._p("object_approach_speed_m_s"))
                  * (1.0 - 0.8 * fraction) * alignment)
         distance = speed * dt
@@ -712,8 +933,17 @@ class SafeHover(Node):
             self.get_logger().error("Target not reacquired during bounded scan; landing")
             self._land()
             return
-        yaw = self.reacquire_yaw + float(self._p("object_search_yaw_rate_rad_s")) * elapsed
-        set_yaw(self.target, yaw)
+        # One correction back toward the last sighting, then hold. Repeating a
+        # frozen error winds the yaw and carries the sign out of frame.
+        if self.search_hint_error is not None:
+            if self.hint_applied_error != self.search_hint_error:
+                self._steer(self.search_hint_error, self.reacquire_yaw)
+                self.hint_applied_error = self.search_hint_error
+            return
+        measured_yaw = yaw_of(self.pose.pose.orientation)
+        rate = float(self._p("object_search_yaw_rate_rad_s"))
+        lead = float(self._p("object_centering_step_limit_rad"))
+        set_yaw(self.target, measured_yaw + (lead if rate >= 0.0 else -lead))
 
     def _land(self) -> None:
         now = monotonic()
@@ -731,6 +961,10 @@ class SafeHover(Node):
         disarmed = state_fresh and not self.state.armed and self.disarmed_at is not None and now - self.disarmed_at >= 1.0
         if landed and disarmed:
             self.phase = "done"
+            if self.flight_label and self.approach_distance > 0.2:
+                self._say_flight(f"Landed after flying to {self.flight_label}")
+            elif self.flight_label:
+                self._say_flight(f"Flight to {self.flight_label} ended before reaching it")
             self.get_logger().info("Landing confirmed: on ground and disarmed")
             return
         if (self.state is None or self.state.mode != "AUTO.LAND") and now - self.last_request >= 1.0 and self.mode_client.service_is_ready():
