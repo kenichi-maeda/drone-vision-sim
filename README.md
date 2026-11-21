@@ -181,6 +181,10 @@ dts devel build --recipe "$(pwd)/recipe" --force --username "$USER" -H birdie123
 For Matrix reset/recovery, logs, parameters, and known limitations, see
 [`docs/operations_notes.md`](docs/operations_notes.md).
 
+A recorded stop-sign flight is in
+[`docs/stop-sign-flight.mp4`](docs/stop-sign-flight.mp4). The left side is the
+Matrix view and the right side is the drone camera with the detector box.
+
 ## Watch the camera live
 
 `CAMERA_VIEWER=true` is already set in `packages/drone_vision/target.env`.
