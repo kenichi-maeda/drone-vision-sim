@@ -5,8 +5,9 @@ debug/
 __pycache__/
 *.pyc
 
-# Model weights (large; place yolov8n.onnx in assets/ after cloning)
+# Local ONNX dumps. The stock YOLOv8n file is vendored so a clone can run.
 *.onnx
+!assets/yolov8n.onnx
 
 # Local approach-test and handoff notes
 docs/approach_test_*.md
