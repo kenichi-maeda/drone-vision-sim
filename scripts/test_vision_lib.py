@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "packages" / "drone_vision"))
 
 from drone_vision.drive_link import encode_input_frame, encode_keyboard
-from drone_vision.vision_lib import color_inside, rectify, rectify_maps, resolve_specified
+from drone_vision.vision_lib import COLOR_BGR, color_inside, rectify, rectify_maps, resolve_specified
 
 
 def paint(color_bgr, width=80, height=60) -> np.ndarray:
@@ -29,14 +29,16 @@ def main() -> None:
     assert resolve_specified("sports ball")["class_id"] == 32
     assert resolve_specified("11")["label"] == "stop sign"
     assert resolve_specified("truck") is None
+    assert resolve_specified("red bot")["color"] == "red"
+    assert resolve_specified("red bot")["class_id"] == 7
     assert resolve_specified("  ") is None
 
-    red = color_inside(paint((40, 40, 220)), 0, 0, 80, 60)
-    yellow = color_inside(paint((0, 220, 220)), 0, 0, 80, 60)
-    blue = color_inside(paint((220, 80, 40)), 0, 0, 80, 60)
-    assert red is not None and red[0] == "red", red
-    assert yellow is not None and yellow[0] == "yellow", yellow
-    assert blue is not None and blue[0] == "blue", blue
+    for name, bgr in COLOR_BGR.items():
+        seen = color_inside(paint(bgr), 0, 0, 80, 60)
+        assert seen is not None and seen[0] == name, (name, bgr, seen)
+    red = color_inside(paint(COLOR_BGR["red"]), 0, 0, 80, 60)
+    yellow = color_inside(paint(COLOR_BGR["yellow"]), 0, 0, 80, 60)
+    blue = color_inside(paint(COLOR_BGR["blue"]), 0, 0, 80, 60)
 
     mixed = paint((40, 180, 40), 100, 80)
     mixed[16:64, 20:80] = (0, 220, 220)

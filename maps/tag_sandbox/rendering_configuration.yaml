@@ -6,7 +6,7 @@ rendering_configuration:
     anti_aliasing: true
     shadows: true
   
-  map_0/vehicle_0/cameraman_0/camera_0:
+  map_0/overhead_0/camera_0:
     lens_distortion: false
     hdr: false
     anti_aliasing: true

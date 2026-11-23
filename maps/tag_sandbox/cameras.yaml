@@ -23,15 +23,18 @@ cameras:
     height: 640
     frame_rate: 30
 
-  map_0/vehicle_0/cameraman_0/camera_0:
-    name: camera_0
+  # The engine binds the camera named front_center. 1100 px focal length
+  # on 1920x1080 is about 80 degrees wide, enough to keep the ring and the
+  # drone's path in frame from the overhead pose.
+  map_0/overhead_0/camera_0:
+    name: front_center
     camera_matrix:
-    - - 200
+    - - 1100.0
       - 0.0
-      - 960
+      - 960.0
     - - 0.0
-      - 200
-      - 540
+      - 1100.0
+      - 540.0
     - - 0.0
       - 0.0
       - 1.0

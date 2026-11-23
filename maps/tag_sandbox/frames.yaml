@@ -20,14 +20,27 @@ frames:
       pitch: 0
       # Preserve the original vehicle heading; navigation must search visually.
       yaw: 1.57079632679
-  # The vehicle faces +Y. The duckie is close and right of the nose so
-  # YOLOv8n can name it and the scan has to yaw. The stop sign is the red
-  # prop on the left. The blue duckiebot is farther ahead and reads as a truck.
+  # Overhead shot. Body +X is the camera axis. Yaw 0 looks east, and a
+  # positive pitch about Y tips that axis down. From (-3.8, 0.3, 3.6) the
+  # axis meets the ground at the spawn, with the 1.15 m ring inside the frame.
+  map_0/overhead_0:
+    relative_to: ~
+    pose:
+      x: -3.8
+      y: 0.3
+      z: 3.6
+      roll: 0.0
+      pitch: 0.75
+      yaw: 0.0
+  # The vehicle faces +Y. The yellow duckie and the red stop sign stay
+  # close enough for YOLOv8n to score them. Ten colored bots stand on a
+  # ring around the spawn so a hover turn can see each one. The plain
+  # grey bot is farther ahead and is not a flight target.
   map_0/duckie_target:
     relative_to: ~
     pose:
-      x: 0.16
-      y: 0.38
+      x: 0.22
+      y: 0.48
       z: 0.0
       roll: 0.0
       pitch: 0.0
@@ -35,8 +48,8 @@ frames:
   map_0/sign_stop_front:
     relative_to: ~
     pose:
-      x: -0.42
-      y: 0.90
+      x: -0.48
+      y: 0.62
       z: 0.0
       roll: 0.0
       pitch: 0.0
@@ -45,11 +58,101 @@ frames:
     relative_to: ~
     pose:
       x: 0.0
-      y: 1.15
+      y: 2.40
       z: 0.0
       roll: 0.0
       pitch: 0.0
       yaw: -1.57079632679
+  map_0/bot_red:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: 1.15
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_orange:
+    relative_to: ~
+    pose:
+      x: 0.676
+      y: 0.93
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_green:
+    relative_to: ~
+    pose:
+      x: 1.094
+      y: 0.355
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_cyan:
+    relative_to: ~
+    pose:
+      x: 1.094
+      y: -0.355
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_blue:
+    relative_to: ~
+    pose:
+      x: 0.676
+      y: -0.93
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_purple:
+    relative_to: ~
+    pose:
+      x: 0.0
+      y: -1.15
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_pink:
+    relative_to: ~
+    pose:
+      x: -0.676
+      y: -0.93
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_white:
+    relative_to: ~
+    pose:
+      x: -1.094
+      y: -0.355
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_brown:
+    relative_to: ~
+    pose:
+      x: -1.094
+      y: 0.355
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
+  map_0/bot_lime:
+    relative_to: ~
+    pose:
+      x: -0.676
+      y: 0.93
+      z: 0.0
+      roll: 0.0
+      pitch: 0.0
+      yaw: 0.0
   # Keep the landing marker off the front-camera test line; use it later for
   # the separate downward-camera landing experiment.
   map_0/groundtag_301:

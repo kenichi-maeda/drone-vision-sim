@@ -11,30 +11,49 @@ import cv2
 import numpy as np
 
 
-# OpenCV hue is 0-179. Red wraps around 0.
+# OpenCV hue is 0-179. Red wraps around 0. The spans are narrow so
+# neighboring duck colors do not claim each other.
 COLOR_RANGES = {
-    "red": (((0, 120, 50), (8, 255, 255)), ((170, 120, 50), (179, 255, 255))),
-    "orange": (((9, 140, 50), (20, 255, 255)),),
-    "yellow": (((21, 140, 70), (35, 255, 255)),),
-    "green": (((36, 80, 40), (85, 255, 255)),),
-    "blue": (((96, 80, 40), (130, 255, 255)),),
-    "purple": (((131, 80, 40), (165, 255, 255)),),
+    "red": (((0, 130, 70), (6, 255, 255)), ((174, 130, 70), (179, 255, 255))),
+    "orange": (((7, 140, 165), (18, 255, 255)),),
+    "brown": (((8, 70, 30), (20, 220, 160)),),
+    "yellow": (((19, 120, 80), (34, 255, 255)),),
+    "lime": (((35, 100, 80), (48, 255, 255)),),
+    "green": (((49, 80, 40), (84, 255, 255)),),
+    "cyan": (((85, 80, 60), (102, 255, 255)),),
+    "blue": (((103, 80, 40), (128, 255, 255)),),
+    "purple": (((129, 70, 40), (155, 255, 255)),),
+    "pink": (((156, 50, 80), (173, 255, 255)),),
 }
 COLOR_BGR = {
-    "red": (40, 40, 220),
-    "orange": (0, 140, 255),
-    "yellow": (0, 220, 220),
-    "green": (80, 200, 80),
-    "blue": (220, 120, 40),
-    "purple": (180, 60, 160),
+    "red": (32, 32, 224),
+    "orange": (24, 120, 240),
+    "brown": (32, 75, 138),
+    "yellow": (32, 220, 240),
+    "lime": (32, 224, 176),
+    "green": (64, 192, 32),
+    "cyan": (208, 208, 32),
+    "blue": (240, 96, 32),
+    "purple": (224, 32, 128),
+    "pink": (160, 96, 240),
+    "white": (242, 242, 242),
 }
 
-# Props placed in front of the drone, and the COCO class plus color they must get.
-# The Matrix traffic-light prefab does not draw a light on this grass map,
-# so it is not one of the objects this view is required to name.
+# Each flight target is a COCO class plus the color painted on that prop.
+# Ten extra ducks sit around the yellow one. The stop sign stays red.
 SPECIFIED_OBJECTS = {
-    32: {"name": "sports_ball", "label": "duckie", "color": "yellow"},
-    11: {"name": "stop_sign", "label": "stop sign", "color": "red"},
+    "duckie": {"name": "sports_ball", "label": "duckie", "color": "yellow", "class_id": 32},
+    "red bot": {"name": "truck", "label": "red bot", "color": "red", "class_id": 7},
+    "orange bot": {"name": "truck", "label": "orange bot", "color": "orange", "class_id": 7},
+    "green bot": {"name": "truck", "label": "green bot", "color": "green", "class_id": 7},
+    "cyan bot": {"name": "truck", "label": "cyan bot", "color": "cyan", "class_id": 7},
+    "blue bot": {"name": "truck", "label": "blue bot", "color": "blue", "class_id": 7},
+    "purple bot": {"name": "truck", "label": "purple bot", "color": "purple", "class_id": 7},
+    "pink bot": {"name": "truck", "label": "pink bot", "color": "pink", "class_id": 7},
+    "white bot": {"name": "truck", "label": "white bot", "color": "white", "class_id": 7},
+    "brown bot": {"name": "truck", "label": "brown bot", "color": "brown", "class_id": 7},
+    "lime bot": {"name": "truck", "label": "lime bot", "color": "lime", "class_id": 7},
+    "stop sign": {"name": "stop_sign", "label": "stop sign", "color": "red", "class_id": 11},
 }
 
 # maps/tag_sandbox/cameras.yaml front_center, equidistant, 480x640.
@@ -88,13 +107,34 @@ def color_inside(frame: np.ndarray, x: int, y: int, w: int, h: int):
         if share > best_share:
             best_share = share
             best_name = name
+    white = cv2.inRange(hsv, np.array((0, 0, 185), dtype=np.uint8), np.array((179, 45, 255), dtype=np.uint8))
+    white_share = float(cv2.countNonZero(white)) / area
+    if white_share > best_share and white_share >= 0.45:
+        best_share = white_share
+        best_name = "white"
     if best_name is None or best_share < 0.08:
         return None
     return best_name, round(best_share, 2)
 
 
+def match_specified(class_id: int, color: str | None) -> dict | None:
+    """The prop with this COCO class and measured color, if the map has one."""
+    if not color:
+        return None
+    hits = [
+        spec for spec in SPECIFIED_OBJECTS.values()
+        if int(spec["class_id"]) == int(class_id) and spec["color"] == color
+    ]
+    if len(hits) == 1:
+        return hits[0]
+    return None
+
+
 def specified_for(class_id: int) -> dict | None:
-    return SPECIFIED_OBJECTS.get(int(class_id))
+    hits = [spec for spec in SPECIFIED_OBJECTS.values() if int(spec["class_id"]) == int(class_id)]
+    if len(hits) == 1:
+        return hits[0]
+    return None
 
 
 def resolve_specified(text: str) -> dict | None:
@@ -102,14 +142,16 @@ def resolve_specified(text: str) -> dict | None:
     key = " ".join(str(text).strip().lower().replace("_", " ").split())
     if not key:
         return None
-    for class_id, spec in SPECIFIED_OBJECTS.items():
-        names = {
-            spec["label"].lower(),
-            spec["name"].lower().replace("_", " "),
-            str(class_id),
-        }
-        if key in names:
-            return {"class_id": int(class_id), **spec}
+    if key in SPECIFIED_OBJECTS:
+        return dict(SPECIFIED_OBJECTS[key])
+    for spec in SPECIFIED_OBJECTS.values():
+        names = {spec["name"].lower().replace("_", " "), str(spec["class_id"])}
+        if key in names and specified_for(int(spec["class_id"])) is spec:
+            return dict(spec)
+    if key in {"sports ball", "32"}:
+        return dict(SPECIFIED_OBJECTS["duckie"])
+    if key == "11":
+        return dict(SPECIFIED_OBJECTS["stop sign"])
     return None
 
 

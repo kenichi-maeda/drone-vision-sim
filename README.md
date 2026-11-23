@@ -5,10 +5,13 @@ The pipeline is camera → stock YOLOv8n COCO detector (`assets/yolov8n.onnx`,
 not fine-tuned) → PX4/MAVROS position setpoints for search, centering, and
 approach. The weights are in this repository. `assets/yolov8n.pt` is the same
 stock checkpoint, and `assets/yolov8n.onnx` is what the workbench loads. The
-camera page chooses the object: `duckie` (COCO 32, `sports ball`, yellow) or
-`stop sign` (COCO 11, red). Both were flown from that page. Flight stays
-disabled until the page requests one. Image size is only an approximate
-stopping cue; this is not metric ranging or obstacle avoidance.
+camera page chooses the object. The names are `duckie` (COCO 32,
+`sports ball`, yellow), `stop sign` (COCO 11, red), and the ten colored bots
+`red bot`, `orange bot`, `green bot`, `cyan bot`, `blue bot`, `purple bot`,
+`pink bot`, `white bot`, `brown bot`, and `lime bot` (COCO 7, `truck`, plus
+that color). Flight stays disabled until the page requests one. Image size is
+only an approximate stopping cue; this is not metric ranging or obstacle
+avoidance.
 
 Detection is strictly camera-only YOLO. No Matrix object
 pose, map coordinates, or simulator target labels feed detection or navigation.
@@ -37,27 +40,24 @@ the flight state, and the YOLO detection. It never reads simulator map poses.
 
 The phases:
 
-1. **Takeoff:** sets `AUTO.TAKEOFF` and arms. The climb is the slow one
-   (`MPC_TKO_SPEED` 0.8 toward `MIS_TAKEOFF_ALT` 0.6). Those two values are
-   RAM parameters, so set them again after every PX4 restart.
-2. **Handoff:** waits until the camera shows the target move down the image
-   (estimator rise at least 0.30 m and `error_y` at least 0.12 higher) or the
-   box grows by 1.5x. Estimator height alone is not treated as a climb. It
-   then streams setpoints and requests `OFFBOARD`.
-3. **Search:** holds x, y and z and only yaws, through a little over one full
-   turn, until YOLO confirms the target in several consecutive frames.
-4. **Centering:** small yaw corrections proportional to the target's horizontal
-   image error, rate-limited, with a short time limit.
-5. **Approach:** moves the target position forward along the current heading.
-   It slows as the target box grows and as the target drifts off-center, and it
-   keeps correcting yaw while it goes.
-6. **Landing:** sets `AUTO.LAND` and waits for ground contact and disarm.
+1. **Takeoff:** sets `AUTO.TAKEOFF` and arms, then holds a fixed thrust until
+   the climb timer elapses or the camera shows the watched object move down
+   the frame. Estimator height alone is not treated as a climb. It then
+   streams setpoints and requests `OFFBOARD`. `MPC_TKO_SPEED` 0.8 and
+   `MIS_TAKEOFF_ALT` 0.6 are RAM parameters, so set them again after every
+   PX4 restart.
+2. **Look around:** yaws in place and catalogs each colored object it sees.
+3. **Recall:** turns back to the bearing of the name that was typed and waits
+   there until that object is visible.
+4. **Center:** yaws and nudges height until the object sits on the camera
+   crosshair, both image errors within 0.22.
+5. **Land beside it:** once the object is on the crosshair, the page says
+   `Arrived at {label}` and the drone lands next to it, then disarms. The
+   status is `Landed beside {label}`. It does not land on the object.
 
-Stop rules: it lands when the target box reaches its goal growth (2.5x by
-default) and an absolute area of 0.02 while centered, when the target drops
-into the lower part of the image, after the approach time limit, or on a PX4
-estimator or pose fault. If the target is lost mid-approach, it freezes
-position, scans briefly once, then resumes or lands.
+It also lands on a PX4 estimator or pose fault, or when the approach time
+runs out. Height stays on the barometer (`EKF2_HGT_REF` 0). Leave GPS
+altitude and vertical velocity off. Do not set `EKF2_GPS_CTRL` back to 5 or 7.
 
 Exact rates, gains, and limits are in the parameter table in
 [`docs/operations_notes.md`](docs/operations_notes.md#what-the-mission-parameters-mean).
@@ -108,11 +108,16 @@ long-running command, and run only one Matrix engine. The robot name below is
    python3 scripts/view_camera.py --robot birdie123test --port 8090
    ```
 
-   Open `http://127.0.0.1:8090/`. **Fly to an object** lists `duckie` and
-   `stop sign`. Choosing one flies the simulated drone to that object.
+   Open `http://127.0.0.1:8090/`. **Fly to an object** lists the duckie, the
+   ten colored bots, and the stop sign. Type one of those names and the
+   simulated drone flies to it. The page beeps when the status begins with
+   `Arrived`.
    `http://127.0.0.1:8090/drive` drives it from the keyboard: W and S move,
    A and D yaw, R climbs, F descends, and X resets to the spawn pose. Click
    the page first. Keys pressed in the Matrix window move the spectator.
+
+Windows and Mac setup, the two cameras, and what a finished recording has to
+show are in [`docs/running.md`](docs/running.md).
 
 ## Before enabling a flight
 
@@ -149,7 +154,7 @@ recovery notes below.
 
 The launcher configures search, centering, and approach. Flight stays off
 until the camera page sends a request. After the readiness checks above pass,
-open `http://127.0.0.1:8090/` and choose `duckie` or `stop sign`.
+open `http://127.0.0.1:8090/` and type one of the object names.
 
 Watch progress without following the fast, full terminal stream:
 
@@ -158,18 +163,16 @@ docker exec dts-virtual-birdie123test docker logs --since 5m dts-run-drone-visio
   | grep -E 'safe_hover|ERROR|AUTO.LAND' | tail -80
 ```
 
-The expected phases are takeoff, OFFBOARD handoff, target search, centering,
-approach, one brief bounded reacquisition, and automatic landing. Forward speed
-eases down as the target drifts off-center. If the target disappears during
-approach, the drone holds position and scans for up to 8 seconds, then lands
-if it cannot reacquire. Verify after the run that MAVROS reports `armed: false` and
-`landed_state: 1`. The node is one-shot; restart the workbench before another
-run.
+The expected phases are takeoff, a look around, a turn back to the typed
+name, centering on the crosshair, arrival, and landing beside the object.
+Verify after the run that MAVROS reports `armed: false` and `landed_state: 1`,
+and that the page says `Landed beside` that name. The node is one-shot;
+restart the workbench before another run.
 
-The map places the duckie at `(0.16, 0.38)`, the stop sign at `(-0.42, 0.90)`,
-and a blue duckiebot at `(0.0, 1.15)`. The duckiebot is not a flight target.
-The approach uses a 2.5x visual-size growth goal and also requires the box
-area to reach 0.02, or the target to drop into the lower part of the image.
+The map places the duckie at `(0.22, 0.48)` and the stop sign at
+`(-0.48, 0.62)`. The ten colored bots stand on a ring about 1.15 m from the
+spawn. A grey duckiebot at `(0.0, 2.40)` is not a flight target. The flight
+node does not read these coordinates.
 
 If Python, the launcher, or the model changed, land the vehicle and stop the
 old workbench first. Rebuild, then start it again using step 3:
@@ -181,9 +184,11 @@ dts devel build --recipe "$(pwd)/recipe" --force --username "$USER" -H birdie123
 For Matrix reset/recovery, logs, parameters, and known limitations, see
 [`docs/operations_notes.md`](docs/operations_notes.md).
 
-A recorded stop-sign flight is in
-[`docs/stop-sign-flight.mp4`](docs/stop-sign-flight.mp4). The left side is the
-Matrix view and the right side is the drone camera with the detector box.
+An earlier stop-sign recording is in
+[`docs/stop-sign-flight.mp4`](docs/stop-sign-flight.mp4). New recordings need
+both views described in [`docs/running.md`](docs/running.md): the overhead
+camera, with the drone moving across the field, and the fisheye page where
+the object name is typed.
 
 ## Watch the camera live
 
@@ -191,4 +196,5 @@ Matrix view and the right side is the drone camera with the detector box.
 Step 4 above forwards port 8090. The page shows the fisheye frame and a
 straight frame (equidistant undistort, balance 0.7), the YOLO box, the flight
 phase, and the object picker. A matching detection needs the COCO class and
-the color: yellow for the duckie, red for the stop sign.
+the color: yellow for the duckie, red for the stop sign, and the named color
+for each bot.

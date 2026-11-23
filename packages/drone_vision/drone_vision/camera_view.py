@@ -85,8 +85,10 @@ PAGE = """<!doctype html>
       <tr><th>Object</th><th>Class</th><th>Color</th><th>Match</th></tr>
     </table>
     <h2>Fly to an object</h2>
+    <p>The drone lifts off, turns all the way around, and then flies to the name you type. It beeps and lands beside the object, with it still in the middle of the camera.</p>
     <p>Available: %%CHOICES%%</p>
-    <input id="target" list="available" placeholder="duckie or stop sign" autocomplete="off">
+    <button id="scan" type="button">Lift and look around</button>
+    <input id="target" list="available" placeholder="green duck, stop sign, ..." autocomplete="off">
     <datalist id="available">%%OPTIONS%%</datalist>
     <button id="fly" type="button">Fly to it</button>
     <p id="flight-msg"></p>
@@ -94,7 +96,23 @@ PAGE = """<!doctype html>
 </main>
 <script>
   let lens = "fisheye";
+  let beeped = "";
   const text = (id, value) => { document.getElementById(id).textContent = value; };
+  function beep() {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.setValueAtTime(1175, ctx.currentTime + 0.16);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.55);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.58);
+  }
   function setLens(next) {
     lens = next;
     text("lens", next);
@@ -114,10 +132,16 @@ PAGE = """<!doctype html>
       const status = await (await fetch("/status")).json();
       const objects = status.objects || [];
       text("phase", status.phase || "idle");
-      text("flight", status.flight_status || "-");
-      const matched = new Set(objects.filter((item) => item.color_ok).map((item) => item.name));
-      const ready = matched.has("sports_ball") && matched.has("stop_sign");
-      text("specified", ready ? "duckie and stop sign match" : "waiting for the duckie and the stop sign");
+      const flight = status.flight_status || "-";
+      text("flight", flight);
+      if (flight.startsWith("Arrived") && flight !== beeped) {
+        beeped = flight;
+        beep();
+      }
+      const named = objects.filter((item) => item.color_ok);
+      text("specified", named.length
+        ? named.map((item) => (item.label || item.name) + " " + Number(item.confidence).toFixed(2)).join(", ")
+        : "waiting for a colored object");
       const table = document.getElementById("objects");
       while (table.rows.length > 1) table.deleteRow(1);
       for (const item of objects) {
@@ -137,7 +161,7 @@ PAGE = """<!doctype html>
     const objectName = (name || document.getElementById("target").value || "").trim();
     const msg = document.getElementById("flight-msg");
     if (!objectName) {
-      msg.textContent = "Enter duckie or stop sign.";
+      msg.textContent = "Type an object first, such as green duck or stop sign.";
       return;
     }
     try {
@@ -149,6 +173,7 @@ PAGE = """<!doctype html>
     }
   }
   document.getElementById("fly").onclick = () => flyTo();
+  document.getElementById("scan").onclick = () => flyTo("scan");
   for (const button of document.querySelectorAll("[data-fly]")) {
     button.onclick = () => {
       document.getElementById("target").value = button.dataset.fly;
@@ -383,7 +408,18 @@ class CameraView(Node):
 
     def _request_flight(self, handler: BaseHTTPRequestHandler, payload: dict) -> None:
         available = [spec["label"] for spec in SPECIFIED_OBJECTS.values()]
-        spec = resolve_specified(str(payload.get("object", "")))
+        raw = str(payload.get("object", "")).strip()
+        if raw.lower() == "scan":
+            message = String()
+            message.data = "scan"
+            self._flight_pub.publish(message)
+            handler._send("application/json", json.dumps({
+                "ok": True,
+                "message": "Request sent: lifting off to look around.",
+                "available": available,
+            }).encode())
+            return
+        spec = resolve_specified(raw)
         if spec is None:
             body = json.dumps({
                 "ok": False,

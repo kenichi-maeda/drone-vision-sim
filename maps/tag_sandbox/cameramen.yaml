@@ -1,9 +1,9 @@
 version: 1.0
-cameramen: {}
 # Supported configurations: DC21
-# Example:
-# cameramen:
-#   map_0/vehicle_0/cameraman_0:
-#     configuration: DC21
-#     color: ~
-#     follow: map_0/vehicle_0
+# Fixed west of the spawn and pitched down, so the drone travels through
+# the shot. follow is left unset: a camera parented to the drone would
+# hold the drone still in frame.
+cameramen:
+  map_0/overhead_0:
+    configuration: DC21
+    color: ~

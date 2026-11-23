@@ -15,7 +15,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray, Header, String
 
-from drone_vision.vision_lib import COLOR_BGR, color_inside, resolve_specified, specified_for
+from drone_vision.vision_lib import COLOR_BGR, color_inside, match_specified, resolve_specified
 
 
 ROBOT_NAME = os.environ.get("VEHICLE_NAME", "birdie")
@@ -25,8 +25,8 @@ OBJECTS_TOPIC = "/drone_vision/yolo_objects"
 FLIGHT_REQUEST_TOPIC = "/drone_vision/flight_request"
 MODEL_INPUT_SIZE = 640
 COCO_STOP_SIGN_CLASS = 11
-FLIGHT_MAX_AREA = 0.18
-VIEW_MAX_AREA = 0.45
+FLIGHT_MAX_AREA = 0.60
+VIEW_MAX_AREA = 0.75
 COCO_CLASS_NAMES = dict(
     enumerate(
         (
@@ -72,6 +72,7 @@ class YoloDetector(Node):
             1, int(self.get_parameter("inference_every_n_frames").value)
         )
         self._target_class_id = int(self.get_parameter("target_class_id").value)
+        self._target_color = "yellow" if self._target_class_id == 32 else ""
         if self._target_class_id != -1 and not 0 <= self._target_class_id < 80:
             raise ValueError("target_class_id must be -1 (any class) or a COCO class ID in [0, 79]")
         allowed = [int(c) for c in self.get_parameter("allowed_class_ids").value]
@@ -214,15 +215,57 @@ class YoloDetector(Node):
             return detections[:1]
         return detections
 
+    def _red_sign_box(self, image: np.ndarray):
+        """The stop sign's red face when the oblique view scores below YOLO's cutoff.
+
+        Nothing else on this map is red. The box is the face, so the existing
+        centering loop can bring that face to the crosshair.
+        """
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, np.array((0, 130, 70), dtype=np.uint8), np.array((6, 255, 255), dtype=np.uint8))
+        mask = cv2.bitwise_or(
+            mask,
+            cv2.inRange(hsv, np.array((174, 130, 70), dtype=np.uint8), np.array((179, 255, 255), dtype=np.uint8)),
+        )
+        mask[:8, :] = 0
+        mask[-8:, :] = 0
+        # The letters split the octagon into pieces. Join them before the box.
+        mask = cv2.dilate(mask, np.ones((5, 5), np.uint8), iterations=2)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        height, width = image.shape[:2]
+        best = None
+        best_area = 0
+        for contour in contours:
+            x, y, w, h = cv2.boundingRect(contour)
+            area = w * h
+            if w < 8 or h < 8 or area < 80 or area > 0.50 * width * height:
+                continue
+            ratio = w / float(h)
+            if ratio < 0.45 or ratio > 2.4:
+                continue
+            red = int(cv2.countNonZero(mask[y:y + h, x:x + w]))
+            if red < 60 or red / float(area) < 0.25:
+                continue
+            if area > best_area:
+                best_area = area
+                best = (x, y, w, h, red)
+        if best is None:
+            return None
+        x, y, w, h, red = best
+        confidence = min(0.55, 0.22 + (red / float(width * height)) * 12.0)
+        return (confidence, [float(x), float(y), float(x + w), float(y + h)], COCO_STOP_SIGN_CLASS)
+
     def _on_flight_request(self, message: String) -> None:
         spec = resolve_specified(message.data)
-        if spec is None:
-            self.get_logger().error(f"Ignoring unknown flight target {message.data!r}")
+        if message.data.strip().lower() == "scan" or spec is None:
+            if spec is None and message.data.strip().lower() != "scan":
+                self.get_logger().error(f"Ignoring unknown flight target {message.data!r}")
             return
         self.set_parameters([
             Parameter("target_class_id", Parameter.Type.INTEGER, int(spec["class_id"]))
         ])
         self._target_class_id = int(spec["class_id"])
+        self._target_color = spec["color"]
         self._target_description = spec["label"]
         self.get_logger().info(
             f"Flight detections now follow {spec['label']} "
@@ -270,7 +313,7 @@ class YoloDetector(Node):
         )
         color_name = color[0] if color else ""
         color_confidence = color[1] if color else 0.0
-        expected = specified_for(class_id)
+        expected = match_specified(class_id, color_name)
         center_x = (x_min + x_max) / 2.0
         center_y = (y_min + y_max) / 2.0
         return {
@@ -313,6 +356,12 @@ class YoloDetector(Node):
             if area <= VIEW_MAX_AREA:
                 visible.append(detection)
         rows = [self._row(image, detection) for detection in visible]
+        if self._target_class_id == COCO_STOP_SIGN_CLASS and not any(
+            row["class_id"] == COCO_STOP_SIGN_CLASS and row["color_ok"] for row in rows
+        ):
+            blob = self._red_sign_box(image)
+            if blob is not None:
+                rows.append(self._row(image, blob))
         inference_ms = (monotonic() - started_at) * 1000.0
         objects_msg = String()
         objects_msg.data = json.dumps({"objects": [
@@ -327,6 +376,7 @@ class YoloDetector(Node):
             if row["width"] * row["height"] <= FLIGHT_MAX_AREA
             and row["color_ok"]
             and (self._target_class_id == -1 or row["class_id"] == self._target_class_id)
+            and (not self._target_color or row["color"] == self._target_color)
         ]
         flight_rows.sort(key=lambda row: row["confidence"], reverse=True)
         if not flight_rows:

@@ -3,3 +3,4 @@ renderer_assignments:
   renderer_0:
     entities:
       - map_0/vehicle_0
+      - map_0/overhead_0

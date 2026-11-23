@@ -10,8 +10,48 @@ vehicles:
     configuration: DD24
     id: ''
     color: ~
-  # Static extra robot in front of the drone. Not the attached vehicle.
+  # Farther static bot. Grey so it does not share a flight color.
   map_0/duckiebot_front:
     configuration: DB21M
     id: ''
-    color: ~
+    color: "#555555"
+  map_0/bot_red:
+    configuration: DB21M
+    id: ''
+    color: "#ff2020"
+  map_0/bot_orange:
+    configuration: DB21M
+    id: ''
+    color: "#f07818"
+  map_0/bot_green:
+    configuration: DB21M
+    id: ''
+    color: "#20c840"
+  map_0/bot_cyan:
+    configuration: DB21M
+    id: ''
+    color: "#20d0d0"
+  map_0/bot_blue:
+    configuration: DB21M
+    id: ''
+    color: "#2060f0"
+  map_0/bot_purple:
+    configuration: DB21M
+    id: ''
+    color: "#8020e0"
+  map_0/bot_pink:
+    configuration: DB21M
+    id: ''
+    color: "#f060a0"
+  map_0/bot_white:
+    configuration: DB21M
+    id: ''
+    color: "#f4f4f4"
+  map_0/bot_brown:
+    configuration: DB21M
+    id: ''
+    color: "#8a4b20"
+  map_0/bot_lime:
+    configuration: DB21M
+    id: ''
+    color: "#b6e020"

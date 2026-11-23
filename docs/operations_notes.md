@@ -68,14 +68,14 @@ these options before setting `enabled=true`:
 | `object_search_enabled` | `true` | After takeoff, hold position and yaw toward the requested object. |
 | `object_search_seconds` | `40` | Blind sweep only when that object was never seen. A sighting yaws toward its image error instead. |
 | `object_centering_enabled` | `true` | Turn to reduce the target's horizontal image error. Yaw steps stay within 0.20 rad. |
-| `object_centering_seconds` | `25` | Maximum time for image-based yaw centering before landing. |
+| `object_centering_seconds` | `40` | Maximum time for image-based yaw centering before landing. |
 | `object_approach_enabled` | `true` | Move forward while maintaining horizontal centering. |
 | `object_approach_speed_m_s` | `0.08` | Maximum forward speed; controller slows as apparent size grows. |
 | `object_approach_max_error_x` | `0.45` | Forward speed tapers between the center tolerance (`0.20`) and this image error; above it the drone holds position while turning. |
 | `object_approach_size_growth_ratio` | `2.5` | Desired box-area growth. Landing also requires absolute area of at least 0.02, so growth of the tiny ground sliver does not land. |
 | `object_approach_arrival_error_y` | `0.75` | Signed arrival cue. The target has to sit in the lower part of the forward image. |
 | `object_approach_reacquire_seconds` | `8.0` | One bounded yaw scan after a target dropout. Translation is held. If not reacquired, land. |
-| `object_approach_timeout_seconds` | `30` | Maximum approach time, not a desired flight duration. |
+| `object_approach_timeout_seconds` | `55` | Maximum approach time, not a desired flight duration. |
 | `pose_stale_timeout_seconds` | `1.5` | After the estimator has risen 0.15 m, a pose older than this lands. Leave this value as it is. |
 
 The flight node is `safe_hover.py`. YOLO reports the duckie as COCO class 32 and the stop sign as class 11 on
@@ -101,13 +101,19 @@ resumes only after stable detections, otherwise it lands. It never continues
 forward without vision.
 
 After every PX4 restart, set `MPC_TKO_SPEED` to 0.8 and `MIS_TAKEOFF_ALT` to
-0.6 again. If `ekf2 status` shows no instance, run `ekf2 stop` and `ekf2 start`
-on `/tmp/px4-sock-0` inside `dt-px4`, then start the pose stream with
-`mavlink stream -r 30 -s LOCAL_POSITION_NED -u 14580` and
-`mavlink stream -r 20 -s ATTITUDE -u 14580`. Confirm local position is updating
-before the page starts a flight. `MPC_THR_HOVER` 0.70, `EKF2_OF_CTRL` 0,
+0.6 again. If `ekf2 status` shows no available instance, run `ekf2 start` once
+while the vehicle is disarmed. Do not loop `ekf2 stop` and `ekf2 start`. Then
+start the pose stream with `mavlink stream -r 30 -s LOCAL_POSITION_NED -u 14580`
+and `mavlink stream -r 20 -s ATTITUDE -u 14580`. Confirm local position is
+updating before the page starts a flight. `MPC_THR_HOVER` 0.70, `EKF2_OF_CTRL` 0,
 `EKF2_MAG_CHECK` 0, `EKF2_REQ_HDRIFT` 0.6, `EKF2_REQ_VDRIFT` 0.6,
-`SENS_EN_MAGSIM` 1, and `SENS_EN_BAROSIM` 1 should stay saved.
+`SENS_EN_MAGSIM` 1, and `SENS_EN_BAROSIM` 1 should stay saved. Height stays on
+the barometer (`EKF2_HGT_REF` 0). Leave GPS altitude and vertical velocity off.
+Do not set `EKF2_GPS_CTRL` back to 5 or 7.
+
+The current mission catalogs the colored objects, centers the typed name on
+the camera crosshair, and lands beside it. Windows and Mac steps and the
+overhead camera are in [`running.md`](running.md).
 
 ## Logs, images, and storage
 
