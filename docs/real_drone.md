@@ -68,11 +68,19 @@ is disarmed and not in flight termination.
 
 The quaternion is roll, pitch, and yaw. Roll and pitch commands stay at 0
 except for a nose-down pitch of 0.03 rad during the approach. Level comes
-from the board trim, not from a bias in this quaternion. Yaw is the IMU yaw
-plus a short lead for the commanded turn rate. An earlier version integrated
-the yaw command on its own. The drone stopped following it during a bounce,
-and the setpoint kept turning, which is the lost heading that ended in the
-cage corner.
+from the board trim, not from a bias in this quaternion. Yaw is the heading
+captured when the pilot arms, plus the turn the script has commanded since
+then. If the body is more than about 0.5 rad away from that command, the
+command rebases onto the IMU once so it cannot wind off on its own. Following
+the live IMU yaw on every tick was tried and removed: every disturbance
+became the new setpoint, and a skim walked into the corner.
+
+With no height reading, thrust ramps to 50 percent and stays there. A missing
+reading is not treated as "still on the floor." The hop that sat in the
+top-right corner held 48 percent with no height for 20 seconds, then the
+script cut to 34 percent and latched that cut until disarm. That cut is gone.
+Above a real 0.65 m, or while climbing faster than about 0.4 m/s, thrust
+eases toward 44 percent. It does not step between 42 and 56 percent.
 
 Thrust is a fraction of full throttle, already scaled by MAVROS. The plugin
 starts with `thrust_scaling` as NaN, and a NaN scale makes MAVROS drop every
@@ -81,26 +89,24 @@ The value in `px4_config.yaml` does not reach the running node. The script
 sets `thrust_scaling` to 1 at startup.
 
 The height target is 0.50 m. Three feet is 0.91 m. Thrust starts at 46
-percent and is not allowed above 50 percent. Above about 0.65 m, or while
-climbing faster than about 0.4 m/s, it cuts toward 40 percent. Once it is
-descending from that cut it holds about 44 percent instead of falling to the
-floor. A height a little above 0.50 m eases down. A height under about 0.40 m
-may climb back, slowly, and only up to 48 percent. With no height reading the
-takeoff ramp stops at 48 percent. It does not cut to a descent after two
-blind seconds, and it does not climb to 56 percent to chase a missing
-reading.
+percent and is not allowed above 50 percent. With no height reading it holds
+50 percent. It does not give up after 20 seconds. Above a real 0.65 m, or
+while climbing faster than about 0.4 m/s, it eases toward 44 percent. A
+height a little above 0.50 m eases down. A height under about 0.40 m may
+climb back, slowly, and only up to 50 percent. It does not climb to 56
+percent to chase a missing reading.
 
-The 8 second still hover counts only while the filtered height stays between
-about 0.35 m and 0.65 m and the vertical speed is small. Outside that band
-the script holds the heading and does not yaw. The search is one slow circle
-(0.18 rad/s) measured from the IMU, so the circle ends when the aircraft has
-actually turned, not when the command integral says it has. If the duck is
-centered for 0.4 seconds, the scan stops and that IMU heading is kept. The
-script then turns back to the best heading it saw, faces the duck, leans
-forward, and lands when the duck is too close, when the mission reaches 120
-seconds, or when a climb never leaves the ground. If the aircraft has already
-been airborne and then sits under about 0.22 m for 5 seconds with the thrust
-already high, it lands instead of pushing into the cage.
+The 8 second still hover earns time only while a fresh height stays between
+about 0.35 m and 0.65 m. One noisy sample does not wipe that time. A full
+second outside the band starts it over, and only before the 8 seconds are
+done. After that, leaving the band pauses the turn and does not restart the
+8 seconds. The search is one slow circle (0.18 rad/s) measured from the IMU,
+so the circle ends when the aircraft has actually turned. If the duck is
+centered for 0.4 seconds, the scan stops and that IMU heading is kept. A
+positive image error means the duck is on the right, and the yaw command is
+the opposite sign. The script then turns back to the best heading it saw,
+faces the duck, leans forward, and lands when the duck is too close, when a
+full circle finds no duck, or when the mission reaches 120 seconds.
 
 ## Duck message
 
@@ -123,6 +129,7 @@ The fields match the simulator detector:
 Range codes: 1 in range, 2 too far, 3 too close, 4 touching the edge. The
 script treats 1 and 2 as a heading it may approach, 3 as the landing cue, and
 4 as "not a lock." Centered means the horizontal error is inside 0.18.
+A positive error yaws the other way, so a duck on the right turns the nose right.
 
 The live page is `http://127.0.0.1:8091/`. Frames come through an SSH tunnel
 to the Pi rosbridge, `ws://127.0.0.1:9001`, topic

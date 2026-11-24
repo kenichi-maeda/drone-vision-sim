@@ -28,11 +28,11 @@ from std_msgs.msg import Float32MultiArray, String
 SCAN_YAW = 0.18
 MAX_YAW = 0.18
 PITCH_FORWARD = -0.03
-# This pack climbed from about 0.2 m to the cage ceiling, 2.1 m, at 50
-# percent. Thrust stays at or below 50 percent. Above about 0.65 m, or on a
-# climb faster than about 0.4 m/s, it cuts toward 40 percent and does not
-# climb back to 56. Three feet is 0.91 m. The circle waits until the height
-# has stayed near 0.50 m.
+# 50 percent with no height reading held a little above the target. Capping
+# the same case at 48 percent only skimmed, and the 20 second "did not climb"
+# cut then dropped it to 34 percent in the corner. Above a real 0.65 m, or
+# on a climb faster than about 0.4 m/s, thrust eases toward 44 percent.
+# Three feet is 0.91 m. The circle waits until the height has stayed near 0.50 m.
 TARGET_HEIGHT = 0.50
 SETTLE_HEIGHT = 0.40
 TAKEOFF_THRUST = 0.46
@@ -107,6 +107,9 @@ class BirdieFlight(Node):
         self.range_rejects = 0
         self.turned = 0.0
         self.prev_yaw: float | None = None
+        self.hover_credit = 0.0
+        self.hover_done = False
+        self.out_of_band = 0.0
         self.was_airborne = False
         self.airborne_since = None
         self.settled_since: float | None = None
@@ -240,12 +243,14 @@ class BirdieFlight(Node):
         if self.yaw0 is None and self.yaw_now is not None:
             self.yaw0 = self.yaw_now
         self.yaw_travel += yaw_rate * dt
-        # The setpoint follows the IMU. An open-loop yaw integral kept turning
-        # after the drone had stopped, which is the lost heading.
-        if self.yaw_now is not None:
-            cmd_yaw = self.yaw_now + yaw_rate * 0.25
-        else:
-            cmd_yaw = self._yaw_cmd()
+        # Hold the heading captured at arm. Following the live IMU yaw let
+        # every disturbance become the new setpoint, so a skim walked into
+        # the corner. If the body is far from the command, rebase once.
+        cmd_yaw = self._yaw_cmd()
+        if self.yaw_now is not None and abs(wrap(cmd_yaw - self.yaw_now)) > 0.50:
+            self.yaw0 = self.yaw_now
+            self.yaw_travel = 0.0
+            cmd_yaw = self.yaw_now
         self.thrust = 0.0 if thrust <= 0.0 else max(MIN_THRUST, min(MAX_THRUST, thrust))
         msg = AttitudeTarget()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -268,6 +273,9 @@ class BirdieFlight(Node):
         self.range_rejects = 0
         self.turned = 0.0
         self.prev_yaw = None
+        self.hover_credit = 0.0
+        self.hover_done = False
+        self.out_of_band = 0.0
         self.was_airborne = False
         self.airborne_since = None
         self.settled_since = None
@@ -324,7 +332,7 @@ class BirdieFlight(Node):
             self.thrust_phase_name = "hold"
             self.t_base = min(self.thrust_cmd if self.t_base is None else self.t_base, 0.44)
             self.stuck_low = 0.0
-            return self._slew_thrust(HOVER_MIN, dt, down=0.25)
+            return self._slew_thrust(0.44, dt, down=0.20)
         if too_high:
             self.thrust_phase_name = "hold"
             self.t_base = min(self.thrust_cmd if self.t_base is None else self.t_base, 0.44)
@@ -338,29 +346,25 @@ class BirdieFlight(Node):
         if not valid:
             if self.h_f is not None and self.h_f > TARGET_HEIGHT:
                 return self._slew_thrust(min(self.thrust_cmd, 0.44), dt, down=0.10)
+            # 50 percent is the thrust that held a little high with no height.
+            # 48 percent only skimmed, and a later cut to 34 percent pinned it.
             if self.thrust_phase_name == "takeoff":
-                self.thrust_cmd = min(0.48, self.thrust_cmd + 0.012 * dt)
-            return min(self.thrust_cmd, 0.48)
-        if self.was_airborne and self.h_f is not None and self.h_f < 0.22 and self.thrust_cmd >= 0.46 and self.v_f < 0.08:
-            self.stuck_low += dt
-        else:
-            self.stuck_low = 0.0
+                self.thrust_cmd = min(0.50, self.thrust_cmd + 0.015 * dt)
+            return min(self.thrust_cmd, 0.50)
         if self.thrust_phase_name == "takeoff":
-            self.thrust_cmd = min(0.48, self.thrust_cmd + 0.012 * dt)
-            rising = self.h_f is not None and (self.v_f > 0.08 or self.h_f >= 0.30)
+            self.thrust_cmd = min(0.50, self.thrust_cmd + 0.015 * dt)
+            rising = self.h_f is not None and (self.v_f > 0.15 or self.h_f >= 0.35)
             if rising:
                 self.thrust_phase_name = "hold"
-                self.t_base = min(0.46, self.thrust_cmd)
-            return min(self.thrust_cmd, 0.48)
+                self.t_base = min(0.50, self.thrust_cmd)
+            return min(self.thrust_cmd, 0.50)
         if self.t_base is None:
-            self.t_base = min(0.46, self.thrust_cmd)
+            self.t_base = min(0.50, self.thrust_cmd)
         error = TARGET_HEIGHT - self.h_f
-        # Ease down above the hover. A low reading may climb back only slowly,
-        # and never back to the thrust that hit the cage.
-        if self.h_f > 0.55 or self.v_f > 0.08:
-            self.t_base = max(0.42, self.t_base - 0.05 * dt)
+        if self.h_f > 0.55:
+            self.t_base = max(0.44, self.t_base - 0.04 * dt)
         elif self.h_f < 0.40 and self.v_f < 0.05:
-            self.t_base = min(0.48, self.t_base + 0.025 * dt)
+            self.t_base = min(0.50, self.t_base + 0.02 * dt)
         desired = self.t_base + 0.03 * error - 0.06 * self.v_f
         return self._slew_thrust(desired, dt, up=0.03, down=0.08)
 
@@ -377,23 +381,28 @@ class BirdieFlight(Node):
             self.prev_yaw = self.yaw_now
         duck = self._fresh(now)
         if not self.was_airborne:
-            if elapsed < CLIMB_LIMIT:
-                return 0.0, 0.0, thrust, "climb"
-            self.land_reason = "low"
-            return 0.0, 0.0, DESCEND_THRUST, "land"
-        if self.stuck_low > 5.0:
-            self.land_reason = "low"
-            return 0.0, 0.0, DESCEND_THRUST, "land"
-        stable = self.h_f is not None and 0.35 <= self.h_f <= MAX_HEIGHT and abs(self.v_f) <= 0.20
-        if not stable:
-            self.settled_since = None
-            if self.airborne_since is not None and now - self.airborne_since > 25.0 and (self.h_f is None or self.h_f < FLYING_HEIGHT):
-                self.land_reason = "low"
-                return 0.0, 0.0, DESCEND_THRUST, "land"
+            # A missing height is not proof it is still on the floor. The last
+            # hop was already off the ground when this timer cut to 34 percent.
             return 0.0, 0.0, thrust, "climb"
-        if self.settled_since is None:
-            self.settled_since = now
-        if not self.scan_done and now - self.settled_since < HOVER_SECONDS:
+        # A fresh reading inside the band earns hover time. One noisy sample
+        # does not wipe it. A full second outside the band does.
+        fresh = height is not None and self.h_f is not None
+        in_band = fresh and 0.35 <= self.h_f <= MAX_HEIGHT
+        if in_band:
+            self.out_of_band = 0.0
+            if not self.hover_done:
+                self.hover_credit += dt
+                if self.hover_credit >= HOVER_SECONDS:
+                    self.hover_done = True
+                    self.turned = 0.0
+                    self.prev_yaw = self.yaw_now
+        else:
+            self.out_of_band += dt
+            if self.out_of_band >= 1.0 and not self.hover_done:
+                self.hover_credit = 0.0
+        if not in_band and self.out_of_band >= 0.4:
+            return 0.0, 0.0, thrust, "climb"
+        if not self.hover_done:
             return 0.0, 0.0, thrust, "hover"
         if duck is not None:
             self._remember(duck)
@@ -401,7 +410,8 @@ class BirdieFlight(Node):
         if facing:
             if self.centered_since is None:
                 self.centered_since = now
-            yaw_rate = max(-MAX_YAW, min(MAX_YAW, duck[4] * 0.8))
+            # A positive error means the duck is on the right. Yaw the other way.
+            yaw_rate = max(-MAX_YAW, min(MAX_YAW, -duck[4] * 0.8))
             if now - self.centered_since < 0.4:
                 return 0.0, yaw_rate, thrust, "center"
             self.scan_done = True
@@ -422,9 +432,9 @@ class BirdieFlight(Node):
             yaw_rate = max(-MAX_YAW, min(MAX_YAW, remain * 0.8))
             return 0.0, yaw_rate, thrust, "return"
         if duck is None or self._range_code(duck) == 4.0 or abs(duck[4]) > CENTER:
-            yaw_rate = 0.0 if duck is None else max(-MAX_YAW, min(MAX_YAW, duck[4] * 0.8))
+            yaw_rate = 0.0 if duck is None else max(-MAX_YAW, min(MAX_YAW, -duck[4] * 0.8))
             return 0.0, yaw_rate, thrust, "center"
-        yaw_rate = max(-MAX_YAW, min(MAX_YAW, duck[4] * 0.8))
+        yaw_rate = max(-MAX_YAW, min(MAX_YAW, -duck[4] * 0.8))
         return PITCH_FORWARD, yaw_rate, thrust, "approach"
 
     def _tick(self) -> None:
