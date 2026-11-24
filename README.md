@@ -10,6 +10,9 @@ camera page chooses the object: `duckie` (COCO 32, `sports ball`, yellow) or
 disabled until the page requests one. Image size is only an approximate
 stopping cue; this is not metric ranging or obstacle avoidance.
 
+The physical Duckiedrone is a different aircraft and a different controller.
+See [docs/real_drone.md](docs/real_drone.md). Do not start `safe_hover.py` on it.
+
 Detection is strictly camera-only YOLO. No Matrix object
 pose, map coordinates, or simulator target labels feed detection or navigation.
 The flight node does use the normal MAVROS local-position estimate, attitude,
